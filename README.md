@@ -4,12 +4,14 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.3.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.4.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
 
-Rejected INFO responses now expose bounded numeric-only format evidence in
-diagnostics after a successful response CRC/result check. No raw response,
-serial number, arbitrary text or unverified sensor reading is published.
+The INFO parser now accepts the CRC-verified five-field reply observed on the
+test S1, as well as the app-derived three-field form. Only the documented first
+three positions become sensors; the final two remain uninterpreted. Diagnostics
+retain a bounded trace of each query in the last cycle, without raw responses
+or device identifiers.
 
 ### Local transport rollback
 
@@ -29,8 +31,9 @@ See [the rollback record](docs/local_transport_rollback.md).
 
 ## What it does
 
-- Polls fixed `S1_INFO`, `OpInfo`, `INFO` and `WARN` status requests using HA's
-  Bluetooth framework. INFO/WARN are app-derived and await live firmware validation.
+- Polls fixed `S1_INFO`, `OpInfo`, `INFO` and `WARN` status requests using the
+  selected local BlueZ or HA Bluetooth transport. All four have live response
+  evidence; raw code meanings and comparison against the app remain unverified.
 - Groups entities under one **Aiper Surfer S1 (BLE)** device, with nine enabled
   by default: temperature, battery, raw operating status/mode, raw warning code, raw solar status,
   last successful poll, polling status and manual discovery result.
@@ -39,7 +42,7 @@ See [the rollback record](docs/local_transport_rollback.md).
   presented as confirmed capabilities.
 - Provides a guarded `aiper_ble_diagnostics.poll_now` action.
 - Provides independent `query_s1_info`, `query_opinfo`, `query_info` and
-  `query_warn` HA/proxy actions for [guarded bisection](docs/isolated_query_bisection.md)
+  `query_warn` actions for [guarded bisection](docs/isolated_query_bisection.md)
   while recurring polling is disabled. These return diagnostics, not partial
   sensor refreshes.
 - Reports repeated manual failures to the status entity and exposes cached,

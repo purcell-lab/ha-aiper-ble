@@ -1,8 +1,9 @@
 # INFO/WARN queries and useful data-point validation
 
-Version 0.9.0 preparation, 20 September 2026. This document separates actual
-robot evidence from app-derived mappings and offline test fixtures. Adding code
-does not constitute a successful live INFO or WARN exchange.
+Updated for version 0.9.4, 20 September 2026. This document separates actual
+robot evidence from app-derived mappings and offline test fixtures. Isolated
+responses have been received for all four queries over pinned local BlueZ;
+repeated full-cycle production validation is a separate acceptance step.
 
 ## Data-point decisions
 
@@ -10,10 +11,10 @@ does not constitute a successful live INFO or WARN exchange.
 | --- | --- | --- |
 | S1_INFO temperature | Live response; app divides first value by 10 | Enabled, °C; physical location unknown |
 | S1_INFO solar state | Live integer; meaning not verified across states | Enabled as raw solar status, no charging assertion |
-| INFO battery level | App maps index 2 to `battLevel`; BatteryView uses 0-100 | Enabled, battery class and %; accept 0-100 only; live/app comparison pending |
-| INFO operating status | App maps index 0 to status | Enabled raw integer; enum/live comparison pending |
-| INFO operating mode | App maps index 1 to mode | Enabled raw integer; enum/live comparison pending |
-| WARN warning code | S1 app parses first field as signed decimal Long | Enabled raw integer, no units/statistics/fault labels; live validation pending |
+| INFO battery level | App maps index 2 to `battLevel`; live 93; BatteryView uses 0-100 | Enabled, battery class and %; accept 0-100 only; app comparison pending |
+| INFO operating status | App maps index 0 to status; live 0 | Enabled raw integer; enum meaning unverified |
+| INFO operating mode | App maps index 1 to mode; live 0 | Enabled raw integer; enum meaning unverified |
+| WARN warning code | S1 app parses first field as signed decimal Long; live 0 | Enabled raw integer, no units/statistics/fault labels |
 | S1_INFO raw temperature | Live but duplicate of scaled value | Disabled by default, diagnostic |
 | S1 time zone | Live metadata, not operational telemetry | Disabled by default, diagnostic |
 | OpInfo Wi-Fi RSSI | Live reply contains -127; sentinel meaning unverified | Disabled by default, raw diagnostic without dBm |
@@ -52,22 +53,26 @@ application code is included in this repository.
 
 The fixed INFO request includes mandatory data CRC 10442 for
 `{"cmd":"AT+INFO?"}`, legacy XOR/base64 framing and newline termination.
-The same guarded HA Bluetooth/proxy transport is used, with one connection per
-request, no retries, no pairing and confirmed notification/disconnect cleanup.
+The selected guarded transport is used, with one connection per request,
+no retries, no pairing and confirmed notification/disconnect cleanup.
+The test installation is pinned to the saved local BlueZ adapter, with no
+Bleak/proxy fallback.
 The existing 300-second minimum interval and 180-second whole-cycle bound remain.
 All four requests share that deadline, not four separate 180-second allowances.
 Slow stages can exhaust the budget; no retry or timeout extension is introduced.
 
 Expected response: `Machine.data.ack` or string `report` containing
-`+INFO:<status>,<mode>,<battery>\r\n`. The strict three-field shape and CRLF are
-integration policy based on the app and established AT framing, not yet an INFO
-wire capture. Extra fields, invalid integers, wrong type/prefix, nonzero result
-or invalid/missing CRC are rejected. Unknown codes stay raw; battery sentinels
-become unavailable instead of zero, 100 or stale values.
+`+INFO:<status>,<mode>,<battery>\r\n` or the observed five-field form.
+At 13:15 AEST, a CRC-valid reply was `+INFO:0,0,93,0,155\r\n`. Version 0.9.4
+accepts exactly three or five signed int32 fields. The app-documented first three
+are used; the last two are not interpreted or surfaced as entities. Other field
+counts, invalid integers, wrong type/prefix, nonzero result or invalid/missing
+CRC are rejected. Unknown codes stay raw; battery sentinels become unavailable
+instead of zero, 100 or stale values.
 
 WARN uses fixed `AT+WARN?`, mandatory data CRC 10501, and the same envelope
 validation. Its strict expected text is `+WARN:<signed-int64>\r\n`.
-Exactly one field and CRLF are integration policy, not a captured WARN reply.
+The local query at 13:00 AEST returned a CRC-verified raw zero with clean cleanup.
 It exposes only `warning_code_raw`, with no fault labels or clear-warning command.
 See the [additional-query assessment](apk_query_catalog.md) for excluded queries.
 
@@ -75,14 +80,17 @@ Offline tests cover exact frames/independent CRC, field order, report precedence
 integer/battery boundaries, invalid frames, query isolation, four-query polling
 through the proxy simulator, third/fourth-query failure and cleanup, default entity
 selection, once-only registry migration, history/ID preservation and diagnostics
-privacy. INFO and WARN fixtures are explicitly synthetic.
+privacy. Tests distinguish live-derived INFO text from synthetic CRC envelopes.
+Additional regressions cover five-field parsing, unknown-tail rejection,
+local full-cycle recovery/backoff, bounded query traces, and suspension if
+notification signal-match cleanup cannot be confirmed.
 
 ## Live acceptance still required
 
 After explicit approval to merge, deploy and restart:
 
 1. Confirm the app is closed, other BLE clients idle and robot stationary.
-   Ensure the nearby active proxy is online. Review existing polling options:
+   Keep the saved local adapter selected. Review existing polling options:
    if polling is enabled, the restart itself initiates the first four-query
    cycle. Do not immediately run an additional query or bypass cooldown.
 2. Check the first cycle completes S1_INFO, OpInfo, INFO and WARN with successful
@@ -100,5 +108,6 @@ After explicit approval to merge, deploy and restart:
 6. If INFO/WARN shape or CRC fails, stop and inspect private diagnostics rather than
    relaxing guards, fabricating missing values or retrying repeatedly.
 
-No production deployment, HA restart or live INFO/WARN query was performed while
-preparing this PR. Live validation results must be added after the approved test.
+The isolated local tests completed with confirmed notification/disconnect cleanup.
+Release notes record deployment and repeated full-cycle validation separately;
+the code change alone is not evidence of reliable recurring operation.

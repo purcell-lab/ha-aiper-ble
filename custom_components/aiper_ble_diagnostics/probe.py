@@ -497,6 +497,13 @@ async def probe(api, target, report, connect=False, *, read=False, query=None):
     except Exception as exc:  # noqa: BLE001 - record failure and always enter cleanup
         report["status"] = "failed"
         report["error_code"] = error_code(exc)
+        report["error_category"] = (
+            "protocol"
+            if isinstance(exc, ProtocolError)
+            else "timeout"
+            if isinstance(exc, TimeoutError)
+            else "transport"
+        )
         report["failure_stage"] = report.get("stage", "unknown")
         report["error"] = f"{type(exc).__name__}: {exc}"
     finally:

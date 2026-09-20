@@ -1,4 +1,4 @@
-"""App-derived INFO fixtures are synthetic until a guarded live exchange."""
+"""App-derived mappings and live-derived INFO text; synthetic CRC envelopes."""
 
 from dataclasses import asdict
 
@@ -53,6 +53,20 @@ def test_info_mapping_and_battery_boundaries(field, battery):
     ) == {"info_status_raw": 2, "info_mode_raw": 1, "battery": battery}
 
 
+@pytest.mark.parametrize("field", ["ack", "report"])
+def test_live_observed_five_fields_only_publishes_documented_positions(field):
+    assert verified_values(
+        response("INFO", {field: "+INFO:0,0,93,0,155\r\n"}), INFO
+    ) == {"info_status_raw": 0, "info_mode_raw": 0, "battery": 93}
+
+
+@pytest.mark.parametrize("battery", [-127, -1, 101, 255])
+def test_five_field_battery_sentinel_remains_unavailable(battery):
+    assert verified_values(
+        response("INFO", {"ack": f"+INFO:0,0,{battery},0,155\r\n"}), INFO
+    ) == {"info_status_raw": 0, "info_mode_raw": 0, "battery": None}
+
+
 @pytest.mark.parametrize("battery", [-127, -1, 101, 255, 2147483647])
 def test_battery_sentinels_not_clamped_or_published(battery):
     values = verified_values(
@@ -77,6 +91,14 @@ def test_battery_sentinels_not_clamped_or_published(battery):
         "+INFO:2,-2147483649,73\r\n",
         "+INFO:2,1,2147483648\r\n",
         "+INFO:2, 1,73\r\n",
+        "+INFO:0,0,93,0,155,6\r\n",
+        "+INFO:0,0,93,0,2147483648\r\n",
+        "+INFO:0,0,93,-2147483649,155\r\n",
+        "+INFO:0,0,93,0,NaN\r\n",
+        "+INFO:0,0,93,0,155.0\r\n",
+        "+INFO:0,0,93,0, 155\r\n",
+        "+INFO:0,0,93,0,１５５\r\n",
+        "+INFO:0,0,93,0,155\n",
     ],
 )
 def test_info_malformed_response_fails_closed(text):
