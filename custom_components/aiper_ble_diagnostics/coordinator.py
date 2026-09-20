@@ -25,6 +25,7 @@ MAX_INTERVAL = 3600
 POLL_SECONDS = 180
 SINGLE_QUERY_SECONDS = 60
 LOCAL_BLEAK_SERVICE = "query_opinfo_local_bleak"
+PROXY_TRACE_SERVICE = "query_opinfo_proxy_trace"
 ISOLATED_QUERIES = {
     "query_s1_info": "S1_INFO",
     "query_opinfo": "OpInfo",
@@ -49,8 +50,10 @@ POLL_DETAIL_FIELDS = (
     "signal_cleanup",
     "cleanup_error_category",
     "notification_cleanup_error_category",
+    "proxy_trace",
 )
 SUSPEND_CODES = {
+    "cleanup_requires_review",
     "ecdh_unsupported",
     "ecdh_gatt_unsupported",
     "protocol_malformed",
@@ -178,7 +181,9 @@ class AiperCoordinator(DataUpdateCoordinator):
                 "last_successful_poll": data["last_success"].isoformat(),
             }
 
-    async def async_query_isolated(self, query_type, *, local_bleak=False):
+    async def async_query_isolated(
+        self, query_type, *, local_bleak=False, proxy_entry_id=None
+    ):
         """One production-transport query, without publishing partial telemetry.
 
         Recurring polling must be disabled so automatic cycles cannot contaminate
@@ -189,6 +194,8 @@ class AiperCoordinator(DataUpdateCoordinator):
             raise ServiceValidationError("Select a fixed diagnostic query.")
         if local_bleak and query_type != "OpInfo":
             raise ServiceValidationError("Same-radio diagnostics allow only OpInfo.")
+        if proxy_entry_id is not None and (local_bleak or query_type != "OpInfo"):
+            raise ServiceValidationError("Proxy trace allows only one OpInfo query.")
         if self.enabled:
             raise ServiceValidationError("Disable recurring polling before bisection.")
         if self.runtime.closing or self.suspended:
@@ -209,11 +216,20 @@ class AiperCoordinator(DataUpdateCoordinator):
         values = {}
         query = Query("omit_empty_crc", "request", self.allow_missing, query_type)
         try:
-            async with asyncio.timeout(SINGLE_QUERY_SECONDS):
+            async with asyncio.timeout(
+                80 if proxy_entry_id is not None else SINGLE_QUERY_SECONDS
+            ):
                 execute = local_query_once if self.use_local_adapter else query_once
                 if local_bleak:
                     execute = local_bleak_query_once
-                await execute(self.hass, self.runtime.target, report, query)
+                if proxy_entry_id is not None:
+                    from .proxy_trace import query_once as proxy_trace_query
+
+                    await proxy_trace_query(
+                        self.hass, self.runtime.target, report, query, proxy_entry_id
+                    )
+                else:
+                    await execute(self.hass, self.runtime.target, report, query)
                 if report.get("status") == "cleanup_requires_review":
                     self.suspended = True
                     report["error_code"] = "cleanup_requires_review"
@@ -258,6 +274,9 @@ class AiperCoordinator(DataUpdateCoordinator):
                 else "transport",
             )
         finally:
+            if report.get("proxy_trace", {}).get("log_cleanup") == "unconfirmed":
+                self.suspended = True
+                report["error_code"] = "cleanup_requires_review"
             if (
                 (
                     report.get("cleanup") != "disconnected_confirmed"
@@ -287,7 +306,9 @@ class AiperCoordinator(DataUpdateCoordinator):
             # Only verified allowlisted scalars, never raw frames or identifiers.
             self.runtime.last_result = {
                 "mode": (
-                    "isolated_ha_bluetooth_local_query"
+                    "isolated_ha_proxy_trace"
+                    if proxy_entry_id is not None
+                    else "isolated_ha_bluetooth_local_query"
                     if local_bleak
                     else f"isolated_{self.transport}_query"
                 ),

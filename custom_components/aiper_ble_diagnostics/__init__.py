@@ -17,7 +17,12 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_RESULT
-from .coordinator import ISOLATED_QUERIES, LOCAL_BLEAK_SERVICE, AiperCoordinator
+from .coordinator import (
+    ISOLATED_QUERIES,
+    LOCAL_BLEAK_SERVICE,
+    PROXY_TRACE_SERVICE,
+    AiperCoordinator,
+)
 from .datapoints import DEFAULT_ENABLED, RETIRED_ENTITY_KEYS, SENSOR_NAMES
 from .probe import Target, open_bluez
 from .probe import probe as run_probe
@@ -64,7 +69,11 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise ServiceValidationError("Integration is unloading.")
         if runtime.task and not runtime.task.done():
             raise ServiceValidationError("A probe is already running.")
-        if call.service in ISOLATED_QUERIES or call.service == LOCAL_BLEAK_SERVICE:
+        if call.service in (
+            *ISOLATED_QUERIES,
+            LOCAL_BLEAK_SERVICE,
+            PROXY_TRACE_SERVICE,
+        ):
             if any(
                 call.data.get(key) is not True
                 for key in (
@@ -78,10 +87,16 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 )
             if runtime.coordinator is None:
                 raise ServiceValidationError("Polling coordinator is unavailable.")
+            if (
+                call.service == PROXY_TRACE_SERVICE
+                and call.data["confirm_proxy_logging"] is not True
+            ):
+                raise ServiceValidationError("Authorise bounded native proxy logging.")
             try:
                 result = await runtime.coordinator.async_query_isolated(
                     ISOLATED_QUERIES.get(call.service, "OpInfo"),
                     local_bleak=call.service == LOCAL_BLEAK_SERVICE,
+                    proxy_entry_id=call.data.get("proxy_entry_id"),
                 )
             finally:
                 async_dispatcher_send(hass, SIGNAL_RESULT, entry.entry_id)
@@ -216,7 +231,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return report if call.return_response else None
 
     schema = {vol.Required("entry_id"): str}
-    for service in (*ISOLATED_QUERIES, LOCAL_BLEAK_SERVICE):
+    for service in (*ISOLATED_QUERIES, LOCAL_BLEAK_SERVICE, PROXY_TRACE_SERVICE):
         hass.services.async_register(
             DOMAIN,
             service,
@@ -227,6 +242,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                     vol.Required("confirm_app_closed"): cv.boolean,
                     vol.Required("confirm_query_write"): cv.boolean,
                     vol.Required("confirm_notifications"): cv.boolean,
+                    **(
+                        {
+                            vol.Required("proxy_entry_id"): str,
+                            vol.Required("confirm_proxy_logging"): cv.boolean,
+                        }
+                        if service == PROXY_TRACE_SERVICE
+                        else {}
+                    ),
                 }
             ),
             supports_response=SupportsResponse.OPTIONAL,
