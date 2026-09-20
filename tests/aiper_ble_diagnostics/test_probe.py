@@ -10,6 +10,19 @@ from custom_components.aiper_ble_diagnostics import probe as p
 from .helpers import TARGET, Fake
 
 
+@pytest.mark.parametrize(
+    "value", ["public", "random", None, "PRIVATE_SECRET", {}, True]
+)
+async def test_preflight_address_type_is_allowlisted_and_passive(value):
+    api, report = Fake(), {}
+    api.data[TARGET.device_path][p.DEVICE_IF]["AddressType"] = value
+    await p.probe(api, TARGET, report)
+    assert api.calls == ["metadata"]
+    expected = value if type(value) is str and value in {"public", "random"} else None
+    assert report["before"]["AddressType"] == expected
+    assert "PRIVATE_SECRET" not in str(report)
+
+
 async def test_preflight_never_connects():
     api, report = Fake(), {}
     await p.probe(api, TARGET, report)

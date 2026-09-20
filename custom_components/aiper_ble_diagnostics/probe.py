@@ -80,19 +80,27 @@ def unpack(value):
 
 def device_summary(properties):
     return {
-        key: properties.get(key)
-        for key in (
-            "Address",
-            "Name",
-            "Connected",
-            "ServicesResolved",
-            "Paired",
-            "Bonded",
-            "Trusted",
-            "Blocked",
-            "RSSI",
-            "UUIDs",
-        )
+        "AddressType": (
+            properties.get("AddressType")
+            if type(properties.get("AddressType")) is str
+            and properties["AddressType"] in {"public", "random"}
+            else None
+        ),
+        **{
+            key: properties.get(key)
+            for key in (
+                "Address",
+                "Name",
+                "Connected",
+                "ServicesResolved",
+                "Paired",
+                "Bonded",
+                "Trusted",
+                "Blocked",
+                "RSSI",
+                "UUIDs",
+            )
+        },
     }
 
 

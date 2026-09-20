@@ -32,7 +32,7 @@ def log(message, address=TARGET.address, tag="esp32_ble_client", decorated=False
 @pytest.mark.parametrize(
     "message,event,fields",
     [
-        ("0x00 Connecting", "connecting", {}),
+        ("0x00 Connecting", "connecting", {"address_type": 0}),
         ("Connection open", "connection_open", {}),
         ("ESP_GATTC_OPEN_EVT", "gatt_event", {"stage": "OPEN"}),
         ("ESP_GATTC_CONNECT_EVT", "gatt_event", {"stage": "CONNECT"}),
@@ -41,6 +41,7 @@ def log(message, address=TARGET.address, tag="esp32_ble_client", decorated=False
         ("cfg_mtu status 0, mtu 23", "mtu", {"status": 0, "mtu": 23}),
         ("cfg_mtu failed, mtu 23, status 13", "mtu_failed", {"status": 13, "mtu": 23}),
         ("ESP_GATTC_DISCONNECT_EVT, reason 0x13", "disconnect", {"reason": 19}),
+        ("ESP_GATTC_DISCONNECT_EVT, reason 0x100", "disconnect", {"reason": 256}),
         ("Service discovery complete", "services_complete", {}),
         ("Searching for services", "services_start", {}),
         ("Connection open error, status=133", "open_error", {"status": 133}),
@@ -176,6 +177,46 @@ async def test_modern_events_require_explicit_target_slot_binding():
     assert capture.data["events"][-1]["reason"] == 19
     assert capture.data["events"][-1]["attribution"] == "bound_slot"
     assert TARGET.address not in json.dumps(capture.data)
+
+
+@pytest.mark.parametrize(
+    "message,event,fields",
+    [
+        ("0x00 Connecting", "connecting", {"address_type": 0}),
+        ("0x01 Connecting", "connecting", {"address_type": 1}),
+        ("0x02 Connecting", "connecting", {"address_type": 2}),
+        ("0x03 Connecting", "connecting", {"address_type": 3}),
+        ("DISCONNECT_EVT reason=0x100", "disconnect", {"reason": 256}),
+        ("Disconnected, reason=0x100, freeing slot", "slot_freed", {"reason": 256}),
+    ],
+)
+async def test_modern_numeric_connection_evidence(message, event, fields):
+    capture = trace.EventCapture(TARGET.address)
+    capture.receive(
+        modern(
+            "Connecting v3 without cache", address=TARGET.address, tag="bluetooth_proxy"
+        )
+    )
+    capture.receive(modern(message))
+    item = capture.data["events"][-1]
+    assert item["event"] == event
+    assert fields.items() <= item.items()
+    assert TARGET.address not in json.dumps(capture.data)
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "0xff Connecting",
+        "DISCONNECT_EVT reason=0x10000",
+        "DISCONNECT_EVT reason=0x100 PRIVATE_SECRET",
+    ],
+)
+async def test_invalid_numeric_connection_evidence_is_not_retained(message):
+    capture = trace.EventCapture(TARGET.address)
+    capture.receive(modern(message, address=TARGET.address))
+    assert not capture.data["events"]
+    assert "PRIVATE" not in json.dumps(capture.data)
 
 
 @pytest.mark.parametrize(

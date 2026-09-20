@@ -61,6 +61,7 @@ def test_route_snapshot_exports_only_allowlisted_metadata():
                 "route_id": "route_1",
                 "scanner_type": "remote",
                 "rssi_dbm": -58,
+                "address_type": None,
                 "advertisement_age_seconds": 10.0,
                 "slots": 3,
                 "free_slots": 2,
@@ -74,6 +75,17 @@ def test_route_snapshot_exports_only_allowlisted_metadata():
     diag.client(SimpleNamespace(_connected_scanner=item, backend_id="partial"))
     assert diag.data["selected_route"] == "route_1"
     assert diag.data["backend"] == "unknown"
+    assert PRIVATE not in json.dumps(diag.data)
+
+
+@pytest.mark.parametrize("value", [0, 1, 2, 3, True, 0.0, -1, 4, PRIVATE, None, {}])
+def test_address_type_is_bounded_integer_metadata(value):
+    diag = observer.TransportDiagnostics({}, "ha_bluetooth")
+    item = route(scanner())
+    item.ble_device.details = {"address_type": value}
+    row = snapshot(diag, [item])["routes"][0]
+    expected = value if type(value) is int and 0 <= value <= 3 else None
+    assert row["address_type"] == expected
     assert PRIVATE not in json.dumps(diag.data)
 
 

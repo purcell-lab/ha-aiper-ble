@@ -45,7 +45,7 @@ MODERN_HEADER = re.compile(
 # ESPHome 2026.9.0 proxy backend. Addressless messages require a preceding
 # target-addressed connection request on this same slot; never infer ownership.
 MODERN_EVENTS = (
-    (r"0x[0-9a-fA-F]{2} Connecting", "connecting", ()),
+    (r"0x(0[0-3]) Connecting", "connecting", ("address_type",)),
     (r"Connection open", "connection_open", ()),
     (r"Connection open failed, status=(\d+)", "open_error", ("status",)),
     (r"MTU exchange failed, status=(\d+)", "mtu_failed", ("status",)),
@@ -55,7 +55,7 @@ MODERN_EVENTS = (
         ("status",),
     ),
     (r"Service discovery complete", "services_complete", ()),
-    (r"DISCONNECT_EVT reason=0x([0-9a-fA-F]{2})", "disconnect", ("reason",)),
+    (r"DISCONNECT_EVT reason=0x([0-9a-fA-F]{2,4})", "disconnect", ("reason",)),
     (r"Remote closed during discovery", "remote_closed_during_discovery", ()),
     (r"Disconnect scheduled", "disconnect_scheduled", ()),
     (r"Disconnecting \(conn_id: \d+\)", "disconnecting", ()),
@@ -75,7 +75,7 @@ MODERN_EVENTS = (
         ("mtu",),
     ),
     (
-        r"Disconnected, reason=0x([0-9a-fA-F]{2}), freeing slot",
+        r"Disconnected, reason=0x([0-9a-fA-F]{2,4}), freeing slot",
         "slot_freed",
         ("reason",),
     ),
@@ -87,14 +87,18 @@ MODERN_EVENTS = (
 )
 # Exact, source-reviewed messages. No free text, addresses or payloads survive.
 EVENTS = (
-    (r"0x[0-9a-fA-F]{2} Connecting", "connecting", ()),
+    (r"0x(0[0-3]) Connecting", "connecting", ("address_type",)),
     (r"Connection open", "connection_open", ()),
     (r"Connection open error, status=(\d+)", "open_error", ("status",)),
     (r"Searching for services", "services_start", ()),
     (r"ESP_GATTC_(OPEN|CONNECT|SEARCH_CMPL|CLOSE)_EVT", "gatt_event", ("stage",)),
     (r"cfg_mtu status (\d+), mtu (\d+)", "mtu", ("status", "mtu")),
     (r"cfg_mtu failed, mtu (\d+), status (\d+)", "mtu_failed", ("mtu", "status")),
-    (r"ESP_GATTC_DISCONNECT_EVT, reason 0x([0-9a-fA-F]{2})", "disconnect", ("reason",)),
+    (
+        r"ESP_GATTC_DISCONNECT_EVT, reason 0x([0-9a-fA-F]{2,4})",
+        "disconnect",
+        ("reason",),
+    ),
     (r"Service discovery complete", "services_complete", ()),
     (r"Disconnecting \(conn_id: \d+\)\.", "disconnecting", ()),
     (r"Remote closed during discovery", "remote_closed_during_discovery", ()),

@@ -99,6 +99,9 @@ class TransportDiagnostics:
             )
             allocations = optional(lambda: scanner.get_allocations())
             scanner_type = optional(lambda: scanner.details.scanner_type.value)
+            address_type = optional(
+                lambda: route.ble_device.details.get("address_type")
+            )
             rows.append(
                 {
                     "route_id": self.route_id(scanner),
@@ -110,6 +113,11 @@ class TransportDiagnostics:
                     ),
                     "rssi_dbm": number(
                         optional(lambda: route.advertisement.rssi), -127, 20
+                    ),
+                    "address_type": (
+                        address_type
+                        if type(address_type) is int and 0 <= address_type <= 3
+                        else None
                     ),
                     "advertisement_age_seconds": (
                         round(age, 3) if age is not None else None
