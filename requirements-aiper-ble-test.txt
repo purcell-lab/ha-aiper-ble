@@ -10,3 +10,6 @@ bluetooth-auto-recovery==1.6.4
 bluetooth-data-tools==1.29.24
 dbus-fast==5.0.22
 habluetooth==6.26.11
+# Optional ESPHome diagnostic path, matching HA 2026.9.3.
+aioesphomeapi==46.2.0
+bleak-esphome==4.0.0
