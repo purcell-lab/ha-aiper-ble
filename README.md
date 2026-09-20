@@ -151,6 +151,9 @@ With a response requested, the action returns `status` and
 
 Download diagnostics through the integration menu. Review all files before
 sharing them publicly, including any HA-generated wrapper metadata.
+The [passive transport diagnostics guide](docs/transport_diagnostics.md)
+explains phase timings, anonymous route metadata, timeout evidence and the
+limits of selected-backend attribution.
 
 ## Development
 
