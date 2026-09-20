@@ -13,8 +13,20 @@ bytes and confirmed cleanup. That is well inside the 20-second connect budget,
 so it is a fast local refusal rather than an expired attempt. The recorded
 diagnostics could not show how long the connect took, where the query sat in the
 cycle, how soon after the previous query's cleanup it started, or whether the
-adapter was still seeing the robot at that moment. Query-to-query reconnect
-timing therefore remained an untestable hypothesis.
+adapter was still seeing the robot at that moment.
+
+A read-only review of the first night on v0.9.11, recorded on issue #16, then
+established from the HAOS host journal that every direct-local `bluez_Failed`
+in that window, and the three failures in the original report, coincided to the
+second with a kernel `hci0: ACL packet for unknown connection handle` event
+carrying the same handle each time, on a local adapter that a second
+integration polls every ~41 seconds. About half of the failures were the first
+connect of a cycle after five or more minutes idle. The failure is therefore
+adapter state, not integration timing: no settle delay would change it, and the
+inter-query gap is of secondary interest. The fields below remain useful
+because they make per-query attribution, connect duration and adapter-side
+visibility explicit in ordinary diagnostics instead of inferred from recorder
+history, which is how that review had to be done.
 
 ## Recorded observations
 
@@ -52,17 +64,20 @@ SSID, serial, payload or exception text is added to diagnostics.
 
 ## What the data can and cannot settle
 
-A distribution of `connect_ms` and `seconds_since_previous_query` across ordinary
-production cycles, correlated with `cycle_query_index` and
-`preconnect_rssi_dbm`, can show whether failures cluster after short gaps, on
-later queries in a cycle, or when the adapter has stopped seeing the robot. That
-would support or weaken the reconnect-timing hypothesis from normal polling,
-with no live experiment and no additional connections.
+`cycle_query_index` and `connect_ms` show directly which connect of a cycle
+refused and how fast, which the issue #16 review could only infer from cycle
+timing. `preconnect_rssi_dbm` and the snapshot's advertisement age show whether
+the pinned adapter was still seeing the robot at that moment.
+`seconds_since_previous_query` is retained because it is cheap and rules the
+reconnect gap in or out per failure, but the host journal has already shown
+that failures occur on cold connects too.
 
-It cannot identify the controller-level cause of a refused connection. That
-still needs host-side `bluetoothd` or `btmon` evidence, which this integration
-deliberately does not collect. No bounded-retry or settle-delay change is
-included here; either remains a separate proposal requiring its own review.
+None of this identifies the controller-level cause of a refused connection.
+That needs host-side `bluetoothd`, kernel or `btmon` evidence, which this
+integration deliberately does not collect; the issue #16 review obtained it
+from the HAOS host journal. No bounded-retry or settle-delay change is included
+here. A retry would likely succeed in practice but would treat a symptom of
+adapter state; remediation belongs with the shared local adapter first.
 
 ## Retained last-successful-poll timestamp
 
