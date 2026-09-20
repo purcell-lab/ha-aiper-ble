@@ -23,6 +23,9 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "allow_missing_advertisement": runtime.coordinator.allow_missing,
                 "transport": runtime.coordinator.transport,
                 "last_poll_details": dict(runtime.coordinator.last_poll_details),
+                "last_poll_queries": [
+                    dict(item) for item in runtime.coordinator.last_poll_queries
+                ],
                 "field_evidence": {
                     "current": runtime.coordinator.last_update_success,
                     "present_in_last_successful_cycle": sorted(

@@ -163,7 +163,7 @@ displayed data object. `-127` is kept as a raw value. Its meaning as a sentinel,
 disconnected state or physical signal strength has not been established.
 There was no `bat`, `cap` or nested `Machine` telemetry in this response.
 
-### Separate INFO query: app-derived, not yet live-validated
+### Separate INFO query: five-field reply observed
 
 The S1 app panel requests `OpInfo`, `INFO` and `S1_INFO` separately.
 `S1PanelActivity.loadDataForCmd` maps the three INFO positions to status, mode
@@ -176,26 +176,31 @@ The fixed request implemented in v0.9.0 is:
 {"type":"Machine","data":{"cmd":"AT+INFO?"},"chksum":10442}
 ```
 
-The expected `Machine.data.ack` or string `report` is
-`+INFO:<status>,<mode>,<battery>\r\n`. This is an app-derived schema and a
-strict integration policy, **not a captured reply from the test robot**.
-Exactly three signed int32 decimal fields are accepted. A battery outside 0-100
+At 13:15 AEST on 20 September 2026, a single pinned local BlueZ query received
+`+INFO:0,0,93,0,155\r\n` in `Machine.data.ack`, with a valid data CRC and result
+zero. The former three-field-only parser rejected this legitimate five-field
+response. The app reads only indices 0/1/2, assigning status, mode and battery.
+Version 0.9.4 accepts exactly three or five signed int32 decimal fields with
+CRLF termination. The last two fields are validated as integers but are neither
+interpreted nor published as sensors. Their meanings remain unknown.
+A battery outside 0-100
 becomes unavailable, without clamping or preventing valid status/mode values
-from being used. Status and mode remain raw codes. Unknown extra fields or
+from being used. Status and mode remain raw codes. Other field counts or
 malformed matching responses fail closed. Report takes precedence over ack,
 as in the existing S1_INFO parser.
 
 See [DP validation and deployment acceptance](info_dp_validation.md) for the
 remaining live checks and the distinction between app evidence and wire evidence.
 
-### Separate WARN query: app-derived, not yet live-validated
+### Separate WARN query: raw warning code observed
 
 The S1 panel also issues `WARN`. Its consumer reads the first decimal field
 using Java `Long.parseLong` and assigns `warnCode`. Version 0.9.0 adds the
 fixed request `{"type":"Machine","data":{"cmd":"AT+WARN?"},"chksum":10501}`.
 The integration requires `+WARN:<signed-int64>\r\n` in Machine ack/report,
-with exactly one field. This strict shape is app-derived policy, not a captured
-WARN reply. Warning codes have no units, statistical state class or inferred
+with exactly one field. At 13:00 AEST on 20 September 2026, a pinned local BlueZ
+query returned the verified raw value zero, with notification and connection
+cleanup confirmed. Warning codes have no units, statistical state class or inferred
 fault labels. The existing full-data CRC, result and cleanup gates apply.
 No clear-warning or other setter is exposed.
 
@@ -242,10 +247,10 @@ arbitrary response keys.
 
 | Reply field | Published value | Evidence and interpretation |
 | --- | --- | --- |
-| INFO third field | Battery, % | App `battLevel` and BatteryView 0-100 scale; live exchange/comparison pending |
-| INFO first field | Operating status raw | App-derived position; enum/live comparison pending |
-| INFO second field | Operating mode raw | App-derived position; enum/live comparison pending |
-| WARN first field | Warning code raw | App-derived signed int64; live response and fault meanings pending |
+| INFO third field | Battery, % | Live 93; app `battLevel` and BatteryView 0-100 scale; app comparison pending |
+| INFO first field | Operating status raw | Live 0; app-derived position; enum meaning unverified |
+| INFO second field | Operating mode raw | Live 0; app-derived position; enum meaning unverified |
+| WARN first field | Warning code raw | Live 0; app-derived signed int64; fault meanings unverified |
 | S1_INFO first field | Temperature, °C | Observed numeric reply; app-derived scale ÷10; physical sensor location unknown |
 | S1_INFO first field | Temperature raw | Observed |
 | S1_INFO second field | Solar status raw | Observed; enum meanings unverified |

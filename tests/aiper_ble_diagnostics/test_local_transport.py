@@ -94,7 +94,9 @@ async def test_local_corrupt_crc_never_publishes(hass, local_radio):
     assert entry.runtime_data.coordinator.data is None
 
 
-@pytest.mark.parametrize("failure", ["Connect", "StopNotify", "Disconnect"])
+@pytest.mark.parametrize(
+    "failure", ["Connect", "StopNotify", "Disconnect", "RemoveMatch"]
+)
 async def test_local_failure_no_fallback_and_cleanup(hass, local_radio, failure):
     local_radio[1].append(lambda bus: setattr(bus, "failure", failure))
     entry = await setup(hass, {"use_local_adapter": True})
@@ -109,6 +111,68 @@ async def test_local_failure_no_fallback_and_cleanup(hass, local_radio, failure)
     else:
         assert entry.runtime_data.coordinator.suspended
     assert "error" not in result
+
+
+async def test_local_live_info_full_cycle_and_bounded_diagnostics(hass, local_radio):
+    local_radio[1].extend(
+        [
+            lambda bus: None,
+            lambda bus: None,
+            lambda bus: setattr(
+                bus,
+                "response",
+                frame(response("INFO", {"ack": "+INFO:0,0,93,0,155\r\n"})),
+            ),
+        ]
+    )
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    assert hass.states.get("sensor.aiper_ble_battery").state == "93"
+    assert hass.states.get("sensor.aiper_ble_operating_status_raw").state == "0"
+    assert hass.states.get("sensor.aiper_ble_operating_mode_raw").state == "0"
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    queries = diagnostics["polling"]["last_poll_queries"]
+    assert [item["query_type"] for item in queries] == [
+        "S1_INFO",
+        "OpInfo",
+        "INFO",
+        "WARN",
+    ]
+    assert all(item["phase"] == "verify_response" for item in queries)
+    assert all(item["cleanup"] == "disconnected_confirmed" for item in queries)
+    assert all(item["notification_cleanup"] == "stop_confirmed" for item in queries)
+    assert "protocol_response" not in json.dumps(queries)
+    assert "PRIVATE_SERIAL" not in json.dumps(queries)
+    assert "155" not in str(entry.runtime_data.coordinator.data)
+
+
+async def test_local_shape_failure_is_protocol_error_then_recovers(hass, local_radio):
+    local_radio[1].extend(
+        [
+            lambda bus: None,
+            lambda bus: None,
+            lambda bus: setattr(
+                bus, "response", frame(response("INFO", {"ack": "+INFO:0,0\r\n"}))
+            ),
+        ]
+    )
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.last_poll_details["error_category"] == "protocol"
+    assert coordinator.last_poll_details["query_type"] == "INFO"
+    assert len(coordinator.last_poll_queries) == 3
+    assert coordinator.data is None
+    assert coordinator.failures == 1
+    assert coordinator.update_interval.total_seconds() == 600
+    assert hass.states.get("sensor.aiper_ble_battery").state == "unavailable"
+    # Simulate the next permitted tick without touching real radios or clocks.
+    coordinator.next_attempt = 0
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert coordinator.failures == 0
+    assert coordinator.update_interval.total_seconds() == 300
+    assert len(coordinator.last_poll_queries) == 4
+    assert len(local_radio[0]) == 7
+    assert hass.states.get("sensor.aiper_ble_battery").state == "73"
 
 
 async def test_missing_local_adapter_no_bus_or_proxy(hass):

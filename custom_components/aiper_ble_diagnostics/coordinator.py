@@ -43,6 +43,7 @@ POLL_DETAIL_FIELDS = (
     "received_bytes",
     "cleanup",
     "notification_cleanup",
+    "signal_cleanup",
     "cleanup_error_category",
     "notification_cleanup_error_category",
 )
@@ -114,6 +115,7 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.next_attempt = 0.0
         self.last_attempt_finished = None
         self.last_poll_details = {}
+        self.last_poll_queries = []
         super().__init__(
             hass,
             LOGGER,
@@ -205,6 +207,9 @@ class AiperCoordinator(DataUpdateCoordinator):
             async with asyncio.timeout(SINGLE_QUERY_SECONDS):
                 execute = local_query_once if self.use_local_adapter else query_once
                 await execute(self.hass, self.runtime.target, report, query)
+                if report.get("status") == "cleanup_requires_review":
+                    self.suspended = True
+                    report["error_code"] = "cleanup_requires_review"
                 if asyncio.current_task().cancelling():
                     raise asyncio.CancelledError
                 if (
@@ -247,9 +252,17 @@ class AiperCoordinator(DataUpdateCoordinator):
             )
         finally:
             if (
-                report.get("cleanup") != "disconnected_confirmed"
-                and report.get("cleanup") is not None
-            ) or report.get("notification_cleanup") == "stop_unconfirmed":
+                (
+                    report.get("cleanup") != "disconnected_confirmed"
+                    and report.get("cleanup") is not None
+                )
+                or report.get("notification_cleanup")
+                in {
+                    "stop_unconfirmed",
+                    "ownership_uncertain",
+                }
+                or report.get("signal_cleanup") == "remove_match_unconfirmed"
+            ):
                 self.suspended = True
                 report["error_code"] = "cleanup_requires_review"
             if report.get("error_code") in SUSPEND_CODES:
@@ -295,6 +308,7 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.status = "polling"
         self.error_code = None
         report = {}
+        reports = []
         try:
             values = {}
             # One connection per fixed request. Local mode pins the saved BlueZ
@@ -307,6 +321,7 @@ class AiperCoordinator(DataUpdateCoordinator):
                         "omit_empty_crc", "request", self.allow_missing, query_type
                     )
                     report = {"query_type": query_type}
+                    reports.append(report)
                     execute = local_query_once if self.use_local_adapter else query_once
                     await execute(self.hass, self.runtime.target, report, query)
                     if report.get("status") == "cleanup_requires_review":
@@ -373,6 +388,10 @@ class AiperCoordinator(DataUpdateCoordinator):
             self.last_poll_details = {
                 key: report[key] for key in POLL_DETAIL_FIELDS if key in report
             }
+            self.last_poll_queries = [
+                {key: item[key] for key in POLL_DETAIL_FIELDS if key in item}
+                for item in reports
+            ]
             # Start the cooldown after cleanup, not before a slow connection.
             delay = (
                 self.update_interval.total_seconds()

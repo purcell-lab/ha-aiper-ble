@@ -285,17 +285,20 @@ def query_telemetry(response, query):
     if query.query_type == "INFO":
         if not isinstance(value, str) or not value.startswith("+INFO:"):
             return None
-        # APK 3.6.1 S1PanelActivity: status, mode, battLevel. Reject unknown
-        # shapes rather than silently accepting extra fields from other models.
+        # APK 3.6.1 reads status, mode, battLevel from the first three fields.
+        # This S1 also returned five fields in a CRC-verified live response.
+        # Accept only these two bounded shapes; never interpret the extra pair.
         match = re.fullmatch(
-            r"\+INFO:([+-]?[0-9]{1,10}),([+-]?[0-9]{1,10}),([+-]?[0-9]{1,10})\r\n",
+            r"\+INFO:([+-]?[0-9]{1,10}(?:,[+-]?[0-9]{1,10}){2}"
+            r"(?:(?:,[+-]?[0-9]{1,10}){2})?)\r\n",
             value,
         )
         if match is None:
             raise ProtocolError("invalid_info_response")
-        status, mode, battery = (int(part) for part in match.groups())
-        if not all(-(2**31) <= item < 2**31 for item in (status, mode, battery)):
+        fields = [int(part) for part in match[1].split(",")]
+        if not all(-(2**31) <= item < 2**31 for item in fields):
             raise ProtocolError("invalid_info_response")
+        status, mode, battery = fields[:3]
         return {
             "info_status_raw": status,
             "info_mode_raw": mode,
