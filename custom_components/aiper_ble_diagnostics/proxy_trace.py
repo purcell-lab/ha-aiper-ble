@@ -36,6 +36,55 @@ HEADER = re.compile(
     r"(?:\[[^\[\]\r\n\x00-\x1f]{1,32}\])?: "
     r"\[\d+\] \[([0-9A-Fa-f:]{17})\] (.*)$"
 )
+MODERN_HEADER = re.compile(
+    r"^(?:\[\d{2}:\d{2}:\d{2}\])?"
+    r"\[(?:[EWICDV]|VV)\]\[(bluetooth_proxy|bluetooth_connection):\d+\]"
+    r"(?:\[[^\[\]\r\n\x00-\x1f]{1,32}\])?: "
+    r"\[(\d{1,2})\] (?:\[([0-9A-Fa-f:]{17})\] )?(.*)$"
+)
+# ESPHome 2026.9.0 proxy backend. Addressless messages require a preceding
+# target-addressed connection request on this same slot; never infer ownership.
+MODERN_EVENTS = (
+    (r"0x[0-9a-fA-F]{2} Connecting", "connecting", ()),
+    (r"Connection open", "connection_open", ()),
+    (r"Connection open failed, status=(\d+)", "open_error", ("status",)),
+    (r"MTU exchange failed, status=(\d+)", "mtu_failed", ("status",)),
+    (
+        r"esp_ble_gattc_send_mtu_req failed, status=(\d+)",
+        "mtu_request_failed",
+        ("status",),
+    ),
+    (r"Service discovery complete", "services_complete", ()),
+    (r"DISCONNECT_EVT reason=0x([0-9a-fA-F]{2})", "disconnect", ("reason",)),
+    (r"Remote closed during discovery", "remote_closed_during_discovery", ()),
+    (r"Disconnect scheduled", "disconnect_scheduled", ()),
+    (r"Disconnecting \(conn_id: \d+\)", "disconnecting", ()),
+    (r"Timeout waiting for teardown, forcing IDLE", "close_timeout", ()),
+    (r"Connect rejected, slot busy", "slot_busy", ()),
+    (r"Connect rejected, GATT app not registered", "gatt_unregistered", ()),
+    (r"OPEN_EVT in IDLE state \(status=(\d+)\)", "late_open", ("status",)),
+    (r"OPEN_EVT in unexpected state", "unexpected_open", ()),
+    (
+        r"Discovery finished, sending connected \(mtu=(\d+)\)",
+        "connected_report",
+        ("mtu",),
+    ),
+    (
+        r"Connected with cached services, sending connected \(mtu=(\d+)\)",
+        "cached_connected_report",
+        ("mtu",),
+    ),
+    (
+        r"Disconnected, reason=0x([0-9a-fA-F]{2}), freeing slot",
+        "slot_freed",
+        ("reason",),
+    ),
+    (r"Service discovery failed, err=(-?\d+)", "discovery_failed", ("status",)),
+    (r"discover_services failed, err=(-?\d+)", "discovery_request_failed", ("status",)),
+    (r"connect failed, err=(-?\d+)", "connect_rejected", ("status",)),
+    (r"disconnect while backend idle, err=(-?\d+)", "backend_idle", ("status",)),
+    (r"Connected reply deferred, TCP buffer full", "connected_reply_deferred", ()),
+)
 # Exact, source-reviewed messages. No free text, addresses or payloads survive.
 EVENTS = (
     (r"0x[0-9a-fA-F]{2} Connecting", "connecting", ()),
@@ -75,6 +124,7 @@ class EventCapture:
 
     def __init__(self, address):
         self.address = address
+        self.bound_slot = None
         self.started = asyncio.get_running_loop().time()
         self.accepting = True
         self.data = {
@@ -91,6 +141,8 @@ class EventCapture:
                 "other_device": 0,
                 "target_header": 0,
                 "target_message_unmatched": 0,
+                "modern_header": 0,
+                "unattributed_slot": 0,
             },
         }
 
@@ -115,6 +167,8 @@ class EventCapture:
         match = HEADER.fullmatch(text)
         counts = self.data["format_counts"]
         if match is None:
+            if self._receive_modern(text):
+                return
             counts["header_unmatched"] += 1
             if "[esp32_ble_client:" in text:
                 counts["ble_tag_header_unmatched"] += 1
@@ -143,6 +197,66 @@ class EventCapture:
             self.data["events"].append(item)
             return
         counts["target_message_unmatched"] += 1
+
+    def _receive_modern(self, text):
+        match = MODERN_HEADER.fullmatch(text)
+        if match is None:
+            return False
+        counts = self.data["format_counts"]
+        counts["modern_header"] += 1
+        tag, slot, address, body = match.groups()
+        slot = int(slot)
+        if address is not None and address.upper() != self.address:
+            counts["other_device"] += 1
+            if self.bound_slot == slot:
+                self.bound_slot = None
+            return True
+        if tag == "bluetooth_proxy":
+            if address is not None and body in {
+                "Connecting v3 with cache",
+                "Connecting v3 without cache",
+            }:
+                self.bound_slot = slot
+                self._modern_event("proxy_connect_request", {}, "target_address")
+            return True
+        if address is None and self.bound_slot != slot:
+            counts["unattributed_slot"] += 1
+            return True
+        counts["target_header"] += 1
+        attribution = "target_address" if address is not None else "bound_slot"
+        for pattern, event, fields in MODERN_EVENTS:
+            parsed = re.fullmatch(pattern, body)
+            if parsed is None:
+                continue
+            values = {
+                field: int(value, 16 if field == "reason" else 10)
+                for field, value in zip(fields, parsed.groups(), strict=True)
+            }
+            self._modern_event(event, values, attribution)
+            if event in {
+                "slot_freed",
+                "close_timeout",
+                "backend_idle",
+                "connect_rejected",
+                "open_error",
+            }:
+                self.bound_slot = None
+            return True
+        counts["target_message_unmatched"] += 1
+        return True
+
+    def _modern_event(self, event, values, attribution):
+        self.data["events"].append(
+            {
+                "event": event,
+                "attribution": attribution,
+                "received_utc": dt_util.utcnow().isoformat(),
+                "offset_ms": round(
+                    (asyncio.get_running_loop().time() - self.started) * 1000, 3
+                ),
+                **values,
+            }
+        )
 
 
 def resolve_proxy(hass, entry_id):
