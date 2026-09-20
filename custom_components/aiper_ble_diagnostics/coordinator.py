@@ -21,6 +21,13 @@ DEFAULT_INTERVAL = 300
 MIN_INTERVAL = 300
 MAX_INTERVAL = 3600
 POLL_SECONDS = 180
+SINGLE_QUERY_SECONDS = 60
+ISOLATED_QUERIES = {
+    "query_s1_info": "S1_INFO",
+    "query_opinfo": "OpInfo",
+    "query_info": "INFO",
+    "query_warn": "WARN",
+}
 POLL_DETAIL_FIELDS = (
     "query_type",
     "transport",
@@ -161,6 +168,108 @@ class AiperCoordinator(DataUpdateCoordinator):
                 "status": self.status,
                 "last_successful_poll": data["last_success"].isoformat(),
             }
+
+    async def async_query_isolated(self, query_type):
+        """One production-transport query, without publishing partial telemetry.
+
+        Recurring polling must be disabled so automatic cycles cannot contaminate
+        a bisection. All four actions share the same completion-based cooldown,
+        task mutex, protocol verification and cleanup suspension.
+        """
+        if query_type not in ISOLATED_QUERIES.values():
+            raise ServiceValidationError("Select a fixed diagnostic query.")
+        if self.enabled:
+            raise ServiceValidationError("Disable recurring polling before bisection.")
+        if self.runtime.closing or self.suspended:
+            raise ServiceValidationError("Integration closing or polling suspended.")
+        if self.runtime.task and not self.runtime.task.done():
+            raise ServiceValidationError("A poll or probe is already running.")
+        now = asyncio.get_running_loop().time()
+        if self.last_attempt_finished is not None:
+            remaining = self.interval - (now - self.last_attempt_finished)
+            if remaining > 0:
+                raise ServiceValidationError(
+                    f"Polling cooldown: retry in {math.ceil(remaining)} seconds."
+                )
+        # No await before reservation: all diagnostic actions use this mutex.
+        self.runtime.task = asyncio.current_task()
+        report = {"query_type": query_type}
+        started = dt_util.utcnow().isoformat()
+        values = {}
+        query = Query("omit_empty_crc", "request", self.allow_missing, query_type)
+        try:
+            async with asyncio.timeout(SINGLE_QUERY_SECONDS):
+                await query_once(self.hass, self.runtime.target, report, query)
+                if asyncio.current_task().cancelling():
+                    raise asyncio.CancelledError
+                if (
+                    report.get("status") != "query_complete"
+                    or report.get("cleanup") != "disconnected_confirmed"
+                    or report.get("notification_cleanup") != "stop_confirmed"
+                ):
+                    raise UpdateFailed(report.get("error_code", "query_incomplete"))
+                report["phase"] = "verify_response"
+                values = {
+                    key: value
+                    for key, value in verified_values(
+                        report.get("protocol_response"), query
+                    ).items()
+                    if value is not None
+                }
+        except asyncio.CancelledError:
+            report["status"] = "interrupted"
+            report.setdefault("failure_stage", report.get("phase", "query"))
+            report.setdefault("error_category", "cancelled")
+            raise
+        except Exception as exc:  # noqa: BLE001 - never expose backend text
+            report["status"] = "failed"
+            report.setdefault("failure_stage", report.get("phase", "query"))
+            report.setdefault(
+                "error_code",
+                str(exc)
+                if isinstance(exc, (ProtocolError, UpdateFailed))
+                else "timeout"
+                if isinstance(exc, TimeoutError)
+                else "transport_error",
+            )
+            report.setdefault(
+                "error_category",
+                "protocol"
+                if isinstance(exc, ProtocolError)
+                else "timeout"
+                if isinstance(exc, TimeoutError)
+                else "transport",
+            )
+        finally:
+            if (
+                report.get("cleanup") != "disconnected_confirmed"
+                and report.get("cleanup") is not None
+            ) or report.get("notification_cleanup") == "stop_unconfirmed":
+                self.suspended = True
+                report["error_code"] = "cleanup_requires_review"
+            if report.get("error_code") in SUSPEND_CODES:
+                self.suspended = True
+            if self.suspended:
+                self.status = "suspended"
+                self.error_code = report["error_code"]
+                self.update_interval = None
+                report["status"] = "suspended"
+                values = {}
+                self._publish_manual_error(UpdateFailed(self.error_code))
+            finished = asyncio.get_running_loop().time()
+            self.last_attempt_finished = finished
+            self.next_attempt = finished + self.interval
+            # Only verified allowlisted scalars, never raw frames or identifiers.
+            self.runtime.last_result = {
+                "mode": "isolated_ha_bluetooth_query",
+                "started_utc": started,
+                "finished_utc": dt_util.utcnow().isoformat(),
+                **{key: report[key] for key in POLL_DETAIL_FIELDS if key in report},
+                "values": values,
+                "updates_entities": False,
+            }
+            self.runtime.task = None
+        return dict(self.runtime.last_result)
 
     async def _async_update_data(self):
         if not self.enabled or self.runtime.closing:

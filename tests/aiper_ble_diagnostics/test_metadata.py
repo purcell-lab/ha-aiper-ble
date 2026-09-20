@@ -26,6 +26,10 @@ def test_service_descriptions_and_translation_match():
     assert (
         set(services)
         == {
+            "query_s1_info",
+            "query_opinfo",
+            "query_info",
+            "query_warn",
             "poll_now",
             "preflight",
             "discover",

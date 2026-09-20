@@ -4,7 +4,7 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.0.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.1.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
 
 ## What it does
@@ -18,6 +18,10 @@ compatibility with existing installations.
   Missing fields remain unavailable; speculative OpInfo/Machine fields are not
   presented as confirmed capabilities.
 - Provides a guarded `aiper_ble_diagnostics.poll_now` action.
+- Provides independent `query_s1_info`, `query_opinfo`, `query_info` and
+  `query_warn` HA/proxy actions for [guarded bisection](docs/isolated_query_bisection.md)
+  while recurring polling is disabled. These return diagnostics, not partial
+  sensor refreshes.
 - Reports repeated manual failures to the status entity and exposes cached,
   privacy-limited transport-stage diagnostics.
 - Retains local-adapter-only discovery, read, query and listen diagnostics.

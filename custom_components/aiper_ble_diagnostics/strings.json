@@ -36,6 +36,46 @@
     }
   },
   "services": {
+    "query_s1_info": {
+      "name": "Query S1_INFO once via HA Bluetooth",
+      "description": "Bisection only: disable recurring polling first. One fixed S1_INFO request over the production HA/proxy transport; verified temperature and solar scalars returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_opinfo": {
+      "name": "Query OpInfo once via HA Bluetooth",
+      "description": "Bisection only: disable recurring polling first. One fixed OpInfo request over the production HA/proxy transport; verified allowlisted scalars returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_info": {
+      "name": "Query INFO once via HA Bluetooth",
+      "description": "Bisection only: disable recurring polling first. One fixed INFO request over the production HA/proxy transport; verified battery/status/mode scalars returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_warn": {
+      "name": "Query WARN once via HA Bluetooth",
+      "description": "Bisection only: disable recurring polling first. One fixed WARN request over the production HA/proxy transport; verified raw warning integer returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries, fault clearing or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
     "poll_now": {
       "name": "Poll Aiper telemetry now",
       "description": "Run one guarded S1_INFO, OpInfo, INFO and WARN cycle through HA Bluetooth and update sensors. Polling must already be enabled and authorised. May shorten offline failure backoff, but cannot bypass the configured normal interval, an active probe, suspension, protocol checks or disconnect cleanup. No robot controls.",
