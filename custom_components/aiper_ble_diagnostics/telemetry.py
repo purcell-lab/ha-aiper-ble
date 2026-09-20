@@ -21,6 +21,7 @@ from .protocol import (
     chunks,
     query_frame,
     query_telemetry,
+    response_evidence,
 )
 
 EXCHANGE_SECONDS = 15
@@ -264,6 +265,9 @@ class QueryBluez(Bluez):
                         raise ProtocolError("notification_queue_overflow")
                     frames = decode(await queue.get())
                     for response in frames:
+                        evidence = response_evidence(response, self.query)
+                        if evidence:
+                            report["response_evidence"] = evidence
                         candidates = query_telemetry(response, self.query)
                         if candidates is None:
                             continue

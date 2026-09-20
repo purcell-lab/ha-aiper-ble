@@ -395,6 +395,8 @@ def error_code(exc):
             "protocol_malformed",
             "protocol_unknown",
             "invalid_s1_info_response",
+            "invalid_info_response",
+            "invalid_warn_response",
             "notification_endpoint_changed",
             "notifications_already_active",
             "notification_queue_overflow",

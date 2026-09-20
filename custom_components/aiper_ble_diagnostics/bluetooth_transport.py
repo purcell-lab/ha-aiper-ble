@@ -25,6 +25,7 @@ from .protocol import (
     protocol_hint,
     query_frame,
     query_telemetry,
+    response_evidence,
 )
 
 CONNECT_SECONDS = 30
@@ -226,6 +227,9 @@ async def query_once(hass, target, report, query):
                 if isinstance(value, ProtocolError):
                     raise value
                 for response in decoder.feed(value):
+                    evidence = response_evidence(response, query)
+                    if evidence:
+                        report["response_evidence"] = evidence
                     if query_telemetry(response, query) is not None:
                         report.update(
                             status="query_complete", protocol_response=response

@@ -213,6 +213,51 @@ def telemetry(response):
     return result
 
 
+def response_evidence(response, query):
+    """Bounded numeric INFO evidence only, never the full device response."""
+    if query.query_type != "INFO" or response.get("type") != "Machine":
+        return {}
+    data = response.get("data")
+    if not isinstance(data, dict):
+        return {}
+    report = data.get("report")
+    source = "report" if isinstance(report, str) else "ack"
+    text = data.get(source)
+    if not isinstance(text, str) or not text.startswith("+INFO:"):
+        return {}
+    checksum = response.get("chksum")
+    encoded = json.dumps(
+        data, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+    valid = (
+        type(checksum) is int
+        and 0 <= checksum <= 65535
+        and checksum == crc16(encoded)
+        and type(response.get("res")) is int
+        and response["res"] == 0
+    )
+    evidence = {"query": "INFO", "source": source, "crc_and_result_valid": valid}
+    if not valid:
+        return evidence
+    evidence["length"] = min(len(text), MAX_FRAME_BYTES)
+    evidence["terminator"] = (
+        "CRLF" if text.endswith("\r\n") else "LF" if text.endswith("\n") else "none"
+    )
+    # Numeric-only fixed-prefix evidence is not interpreted as telemetry.
+    # Never include arbitrary strings, keys, serials, raw frames or error text.
+    payload = text[6:].removesuffix("\r\n").removesuffix("\n")
+    fields = payload.split(",")
+    if (
+        len(text) <= 160
+        and 1 <= len(fields) <= 12
+        and all(re.fullmatch(r"[ +\-0-9.]{1,12}", field) for field in fields)
+    ):
+        evidence["numeric_fields"] = fields
+    else:
+        evidence["numeric_fields_redacted"] = True
+    return evidence
+
+
 def query_telemetry(response, query):
     """Return numeric candidates for the selected query, or None if unrelated.
 
