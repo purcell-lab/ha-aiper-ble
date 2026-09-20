@@ -17,7 +17,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_RESULT
-from .coordinator import AiperCoordinator
+from .coordinator import ISOLATED_QUERIES, AiperCoordinator
 from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
 from .probe import Target, open_bluez
 from .probe import probe as run_probe
@@ -64,6 +64,31 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise ServiceValidationError("Integration is unloading.")
         if runtime.task and not runtime.task.done():
             raise ServiceValidationError("A probe is already running.")
+        if call.service in ISOLATED_QUERIES:
+            if any(
+                call.data.get(key) is not True
+                for key in (
+                    "confirm_app_closed",
+                    "confirm_query_write",
+                    "confirm_notifications",
+                )
+            ):
+                raise ServiceValidationError(
+                    "Confirm idle BLE clients, query write and notifications."
+                )
+            if runtime.coordinator is None:
+                raise ServiceValidationError("Polling coordinator is unavailable.")
+            try:
+                result = await runtime.coordinator.async_query_isolated(
+                    ISOLATED_QUERIES[call.service]
+                )
+            finally:
+                async_dispatcher_send(hass, SIGNAL_RESULT, entry.entry_id)
+            if not call.return_response and result["status"] != "query_complete":
+                raise ServiceValidationError(
+                    f"Isolated query {result['status']}. See integration diagnostics."
+                )
+            return result if call.return_response else None
         if call.service == "poll_now":
             if call.data.get("confirm_app_closed") is not True:
                 raise ServiceValidationError(
@@ -190,6 +215,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return report if call.return_response else None
 
     schema = {vol.Required("entry_id"): str}
+    for service in ISOLATED_QUERIES:
+        hass.services.async_register(
+            DOMAIN,
+            service,
+            handle,
+            schema=vol.Schema(
+                {
+                    **schema,
+                    vol.Required("confirm_app_closed"): cv.boolean,
+                    vol.Required("confirm_query_write"): cv.boolean,
+                    vol.Required("confirm_notifications"): cv.boolean,
+                }
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     hass.services.async_register(
         DOMAIN,
         "poll_now",
