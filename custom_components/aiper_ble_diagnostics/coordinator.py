@@ -21,6 +21,22 @@ DEFAULT_INTERVAL = 300
 MIN_INTERVAL = 300
 MAX_INTERVAL = 3600
 POLL_SECONDS = 180
+POLL_DETAIL_FIELDS = (
+    "query_type",
+    "transport",
+    "status",
+    "phase",
+    "failure_stage",
+    "error_code",
+    "error_category",
+    "write_attempts",
+    "notification_count",
+    "received_bytes",
+    "cleanup",
+    "notification_cleanup",
+    "cleanup_error_category",
+    "notification_cleanup_error_category",
+)
 SUSPEND_CODES = {
     "ecdh_unsupported",
     "ecdh_gatt_unsupported",
@@ -84,6 +100,7 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.failures = 0
         self.next_attempt = 0.0
         self.last_attempt_finished = None
+        self.last_poll_details = {}
         super().__init__(
             hass,
             LOGGER,
@@ -97,6 +114,14 @@ class AiperCoordinator(DataUpdateCoordinator):
     def _async_refresh_finished(self):
         """Keep diagnostic status current even across consecutive failures."""
         self.async_update_listeners()
+
+    @callback
+    def _publish_manual_error(self, error):
+        """Publish repeated failures without duplicating first-failure events."""
+        was_successful = self.last_update_success
+        self.async_set_update_error(error)
+        if not was_successful:
+            self.async_update_listeners()
 
     async def async_poll_now(self):
         """Run one existing guarded cycle, not a queued or concurrent probe.
@@ -122,10 +147,10 @@ class AiperCoordinator(DataUpdateCoordinator):
         try:
             data = await self._async_update_data()
         except asyncio.CancelledError:
-            self.async_set_update_error(UpdateFailed("Polling interrupted"))
+            self._publish_manual_error(UpdateFailed("Polling interrupted"))
             raise
         except UpdateFailed as exc:
-            self.async_set_update_error(exc)
+            self._publish_manual_error(exc)
             raise
         else:
             # Publish through HA and reschedule the next normal automatic poll.
@@ -165,7 +190,7 @@ class AiperCoordinator(DataUpdateCoordinator):
                     query = Query(
                         "omit_empty_crc", "request", self.allow_missing, query_type
                     )
-                    report = {}
+                    report = {"query_type": query_type}
                     await query_once(self.hass, self.runtime.target, report, query)
                     if report.get("status") == "cleanup_requires_review":
                         self.suspended = True
@@ -183,6 +208,7 @@ class AiperCoordinator(DataUpdateCoordinator):
                         or report.get("notification_cleanup") != "stop_confirmed"
                     ):
                         raise UpdateFailed(report.get("error_code", "query_incomplete"))
+                    report["phase"] = "verify_response"
                     values.update(
                         verified_values(report.get("protocol_response"), query)
                     )
@@ -194,6 +220,8 @@ class AiperCoordinator(DataUpdateCoordinator):
             return values
         except asyncio.CancelledError:
             self.status = "interrupted"
+            report.setdefault("failure_stage", report.get("phase", "query"))
+            report.setdefault("error_category", "cancelled")
             raise
         except Exception as exc:  # noqa: BLE001 - do not expose transport identifiers
             self.failures += 1
@@ -205,6 +233,14 @@ class AiperCoordinator(DataUpdateCoordinator):
                 if isinstance(exc, TimeoutError)
                 else "transport_error"
             )
+            if isinstance(exc, TimeoutError):
+                report.setdefault("failure_stage", report.get("phase", "query"))
+                report.setdefault("error_category", "timeout")
+            elif isinstance(exc, ProtocolError):
+                report.setdefault("failure_stage", report.get("phase", "query"))
+                report.setdefault("error_category", "protocol")
+            report["status"] = self.status
+            report.setdefault("error_code", self.error_code)
             self.update_interval = (
                 None
                 if self.suspended
@@ -216,6 +252,10 @@ class AiperCoordinator(DataUpdateCoordinator):
             )
             raise UpdateFailed(self.error_code) from None
         finally:
+            # Never retain response payloads, exception text or route identifiers.
+            self.last_poll_details = {
+                key: report[key] for key in POLL_DETAIL_FIELDS if key in report
+            }
             # Start the cooldown after cleanup, not before a slow connection.
             delay = (
                 self.update_interval.total_seconds()

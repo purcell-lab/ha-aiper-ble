@@ -15,6 +15,9 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.aiper_ble_diagnostics import bluetooth_transport as transport
 from custom_components.aiper_ble_diagnostics.const import DOMAIN
 from custom_components.aiper_ble_diagnostics.coordinator import verified_values
+from custom_components.aiper_ble_diagnostics.diagnostics import (
+    async_get_config_entry_diagnostics,
+)
 from custom_components.aiper_ble_diagnostics.probe import (
     EXPECTED_CHARACTERISTIC,
     EXPECTED_SERVICE,
@@ -338,6 +341,25 @@ async def test_failures_cleanup_and_suspension(hass, radio, stage):
     assert "disconnect" in radio.clients[0].calls
     assert coordinator.suspended is (stage in {"stop", "disconnect"})
     assert "PRIVATE_BACKEND_IDENTIFIER" not in str(coordinator.error_code)
+    details = coordinator.last_poll_details
+    assert details["query_type"] == "S1_INFO"
+    assert (
+        details["failure_stage"]
+        == {
+            "connect": "connect",
+            "start": "start_notify",
+            "write": "write",
+            "stop": "stop_notify",
+            "disconnect": "disconnect",
+        }[stage]
+    )
+    assert details["transport"] == "ha_bluetooth"
+    diagnostic = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostic["polling"]["last_poll_details"] == details
+    assert "PRIVATE_BACKEND_IDENTIFIER" not in str(diagnostic)
+    assert "protocol_response" not in str(details)
+    assert TARGET.address not in str(diagnostic)
+    assert TARGET.name not in str(diagnostic)
 
 
 @pytest.mark.parametrize("stage", ["connect", "start", "write"])
@@ -359,6 +381,11 @@ async def test_cancel_at_every_connection_phase(hass, radio, stage):
     if stage != "connect":
         assert "stop" in radio.clients[0].calls
     assert not radio.clients[0].is_connected
+    assert report["error_category"] == "cancelled"
+    assert (
+        report["failure_stage"]
+        == {"connect": "connect", "start": "start_notify", "write": "write"}[stage]
+    )
 
 
 async def test_connection_timeout_cleans_tracked_client(hass, radio):
@@ -367,6 +394,34 @@ async def test_connection_timeout_cleans_tracked_client(hass, radio):
         report = await execute(hass, radio)
     assert report["status"] == "failed"
     assert radio.clients[0].calls == ["connect", "disconnect"]
+    assert report["failure_stage"] == "connect"
+    assert report["error_category"] == "timeout"
+
+
+@pytest.mark.parametrize(
+    ("exception", "category"),
+    [
+        (TimeoutError("PRIVATE"), "timeout"),
+        (ConnectionError("PRIVATE"), "connection"),
+        (OSError("PRIVATE"), "os"),
+        (RuntimeError("PRIVATE"), "unexpected"),
+        (transport.BleakError("PRIVATE"), "bleak"),
+    ],
+)
+def test_error_categories_never_include_exception_text(exception, category):
+    assert transport.error_category(exception) == category
+
+
+async def test_notification_timeout_has_no_retry_and_cleans_up(hass, radio):
+    radio.mutations.append(lambda client: setattr(client, "reply", b""))
+    with patch.object(transport, "EXCHANGE_SECONDS", 0.01):
+        report = await execute(hass, radio)
+    assert report["failure_stage"] == "wait_response"
+    assert report["error_category"] == "timeout"
+    assert report["notification_cleanup"] == "stop_confirmed"
+    assert report["cleanup"] == "disconnected_confirmed"
+    assert len(radio.clients) == 1
+    assert bytes(radio.clients[0].written) == query_frame(S1)
 
 
 async def test_helper_cannot_retry_physical_connect():

@@ -5,9 +5,10 @@ from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
+from homeassistant.setup import async_setup_component
 
 from custom_components.aiper_ble_diagnostics.const import DOMAIN
 
@@ -71,8 +72,10 @@ async def test_poll_now_failure_invalidates_sensors_and_preserves_backoff(
     coordinator = entry.runtime_data.coordinator
     expire_cooldown(coordinator)
     transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
-    with pytest.raises(HomeAssistantError):
-        await call_poll(hass, entry)
+    result = await call_poll(hass, entry)
+    assert result["status"] == "failed"
+    assert result["consecutive_failures"] == 1
+    assert "error_code" in result
     assert len(transport[0]) == 3
     assert coordinator.failures == 1
     assert coordinator.update_interval.total_seconds() == 600
@@ -88,13 +91,76 @@ async def test_poll_now_cleanup_failure_suspends_and_cannot_be_forced(hass, tran
     coordinator = entry.runtime_data.coordinator
     expire_cooldown(coordinator)
     transport[1].append(lambda bus: setattr(bus, "failure", "Disconnect"))
-    with pytest.raises(HomeAssistantError):
-        await call_poll(hass, entry)
+    assert (await call_poll(hass, entry))["status"] == "suspended"
     assert coordinator.suspended
     expire_cooldown(coordinator)
     with pytest.raises(HomeAssistantError, match="suspended"):
         await call_poll(hass, entry)
     assert len(transport[0]) == 3
+
+
+async def test_repeated_manual_failure_publishes_count_and_recovers(hass, transport):
+    transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.failures == 1  # Startup already failed.
+    for failures in (2, 3):
+        expire_cooldown(coordinator)
+        transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+        result = await call_poll(hass, entry)
+        assert result["status"] == "failed"
+        assert result["consecutive_failures"] == failures
+        state = hass.states.get("sensor.aiper_ble_polling_status")
+        assert state.attributes["consecutive_failures"] == failures
+        assert state.attributes["error_code"] == coordinator.error_code
+        assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
+        assert len(transport[0]) == failures  # No second query or retry.
+        assert coordinator.update_interval.total_seconds() == 300 * 2**failures
+    expire_cooldown(coordinator)
+    assert (await call_poll(hass, entry))["status"] == "ok"
+    assert coordinator.failures == 0
+    assert hass.states.get("sensor.aiper_ble_temperature").state == "21.5"
+    assert "error_code" not in coordinator.last_poll_details
+
+
+async def test_failure_without_response_is_actionable_service_error(hass, transport):
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    expire_cooldown(coordinator)
+    transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+    with pytest.raises(ServiceValidationError, match="See integration diagnostics"):
+        await call_poll(hass, entry, response=False)
+    assert len(transport[0]) == 3
+    assert coordinator.failures == 1
+
+
+async def test_rest_response_failure_is_structured_not_http_500(
+    hass, hass_client, transport
+):
+    transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    expire_cooldown(coordinator)
+    transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+    assert await async_setup_component(hass, "api", {})
+    client = await hass_client()
+    response = await client.post(
+        f"/api/services/{DOMAIN}/poll_now?return_response",
+        json={"entry_id": entry.entry_id, "confirm_app_closed": True},
+    )
+    assert response.status == 200
+    payload = (await response.json())["service_response"]
+    assert payload["status"] == "failed"
+    assert payload["consecutive_failures"] == 2
+    assert payload["error_code"] == coordinator.error_code
+    assert "last_successful_poll" not in payload
+    assert len(transport[0]) == 2
+    assert (
+        hass.states.get("sensor.aiper_ble_polling_status").attributes[
+            "consecutive_failures"
+        ]
+        == 2
+    )
 
 
 async def test_poll_now_mutex_and_unload_cancellation(hass, transport):

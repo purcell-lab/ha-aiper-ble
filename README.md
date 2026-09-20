@@ -4,7 +4,7 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.8.0.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.8.1.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
 
 ## What it does
@@ -14,6 +14,8 @@ compatibility with existing installations.
 - Exposes temperature, raw temperature, time zone, raw solar status, and supported
   OpInfo fields. Optional fields remain unavailable when the robot omits them.
 - Provides a guarded `aiper_ble_diagnostics.poll_now` action.
+- Reports repeated manual failures to the status entity and exposes cached,
+  privacy-limited transport-stage diagnostics.
 - Retains local-adapter-only discovery, read, query and listen diagnostics.
 
 Temperature sensor location is unverified. Raw battery fields are not verified
