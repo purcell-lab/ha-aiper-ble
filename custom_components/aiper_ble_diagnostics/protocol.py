@@ -37,7 +37,7 @@ class Listen:
 
 @dataclass(frozen=True)
 class Query:
-    """One of two fixed status requests; no caller-supplied command or data."""
+    """One of four fixed status requests; no caller-supplied command or data."""
 
     checksum_mode: str
     write_mode: str
@@ -51,7 +51,7 @@ class Query:
             raise ProtocolError("invalid_write_mode")
         if type(self.allow_missing_advertisement) is not bool:
             raise ProtocolError("invalid_legacy_probe_confirmation")
-        if self.query_type not in {"OpInfo", "S1_INFO"}:
+        if self.query_type not in {"OpInfo", "S1_INFO", "INFO", "WARN"}:
             raise ProtocolError("invalid_query_type")
 
 
@@ -74,11 +74,11 @@ def query_frame(query):
     if not isinstance(query, Query):
         raise ProtocolError("not_a_query")
     command = (
-        {"type": "Machine", "data": {"cmd": "AT+S1_INFO?"}}
-        if query.query_type == "S1_INFO"
+        {"type": "Machine", "data": {"cmd": f"AT+{query.query_type}?"}}
+        if query.query_type in {"S1_INFO", "INFO", "WARN"}
         else {"type": "OpInfo", "data": {}}
     )
-    if query.query_type == "S1_INFO" or query.checksum_mode == "include_empty_crc":
+    if query.query_type != "OpInfo" or query.checksum_mode == "include_empty_crc":
         command["chksum"] = crc16(
             json.dumps(command["data"], separators=(",", ":")).encode()
         )
@@ -102,12 +102,12 @@ def preview(query):
         "apk_sha256": APK_SHA256,
         "recommended_checksum_mode": (
             "not_applicable_nonempty_data"
-            if query.query_type == "S1_INFO"
+            if query.query_type != "OpInfo"
             else "omit_empty_crc"
         ),
         "checksum_semantics": (
             "nonempty_data_crc_required"
-            if query.query_type == "S1_INFO"
+            if query.query_type != "OpInfo"
             else "explicit_empty_object"
             if query.checksum_mode == "include_empty_crc"
             else "null_data_legacy_serializer"
@@ -228,6 +228,35 @@ def query_telemetry(response, query):
     # Mirror the app's report-before-ack selection without interpreting other ATs.
     report = data.get("report")
     value = report if isinstance(report, str) else data.get("ack")
+    if query.query_type == "WARN":
+        if not isinstance(value, str) or not value.startswith("+WARN:"):
+            return None
+        # S1 app reads the first decimal field with Java Long.parseLong.
+        # Require exactly one signed int64 field; do not guess fault-bit labels.
+        match = re.fullmatch(r"\+WARN:([+-]?[0-9]{1,19})\r\n", value)
+        if match is None or not -(2**63) <= int(match[1]) < 2**63:
+            raise ProtocolError("invalid_warn_response")
+        return {"warning_code_raw": int(match[1])}
+    if query.query_type == "INFO":
+        if not isinstance(value, str) or not value.startswith("+INFO:"):
+            return None
+        # APK 3.6.1 S1PanelActivity: status, mode, battLevel. Reject unknown
+        # shapes rather than silently accepting extra fields from other models.
+        match = re.fullmatch(
+            r"\+INFO:([+-]?[0-9]{1,10}),([+-]?[0-9]{1,10}),([+-]?[0-9]{1,10})\r\n",
+            value,
+        )
+        if match is None:
+            raise ProtocolError("invalid_info_response")
+        status, mode, battery = (int(part) for part in match.groups())
+        if not all(-(2**31) <= item < 2**31 for item in (status, mode, battery)):
+            raise ProtocolError("invalid_info_response")
+        return {
+            "info_status_raw": status,
+            "info_mode_raw": mode,
+            # Preserve other valid fields, but never clamp a sentinel to 0/100.
+            "battery": battery if 0 <= battery <= 100 else None,
+        }
     if not isinstance(value, str) or not value.startswith("+S1_INFO:"):
         return None
     match = re.fullmatch(

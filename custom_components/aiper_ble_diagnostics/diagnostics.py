@@ -5,6 +5,7 @@ from dataclasses import asdict
 from homeassistant.components.diagnostics import async_redact_data
 
 from .const import REDACT_KEYS
+from .datapoints import SENSOR_NAMES
 
 
 async def async_get_config_entry_diagnostics(hass, entry):
@@ -22,6 +23,15 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "allow_missing_advertisement": runtime.coordinator.allow_missing,
                 "transport": "ha_bluetooth",
                 "last_poll_details": dict(runtime.coordinator.last_poll_details),
+                "field_evidence": {
+                    "current": runtime.coordinator.last_update_success,
+                    "present_in_last_successful_cycle": sorted(
+                        key
+                        for key in SENSOR_NAMES
+                        if (runtime.coordinator.data or {}).get(key) is not None
+                        and key != "last_success"
+                    ),
+                },
             },
             "scope": "HA Bluetooth/proxy polling; legacy diagnostics local only; no control",
         },

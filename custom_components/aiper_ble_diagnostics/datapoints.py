@@ -23,6 +23,10 @@ MACHINE_FIELDS = {
 
 SENSOR_NAMES = {
     "temperature": "Aiper BLE temperature",
+    "battery": "Aiper BLE battery",
+    "info_status_raw": "Aiper BLE operating status raw",
+    "info_mode_raw": "Aiper BLE operating mode raw",
+    "warning_code_raw": "Aiper BLE warning code raw",
     "temperature_raw": "Aiper BLE S1 temperature raw",
     "solar_status_raw": "Aiper BLE solar status raw",
     "s1_timezone": "Aiper BLE S1 time zone",
@@ -35,6 +39,20 @@ SENSOR_NAMES = {
     },
     "last_success": "Aiper BLE last successful poll",
 }
+
+# Useful operational entities, without duplicate raw temperature or speculative
+# OpInfo fields. Existing registry entries and opt-in diagnostics retain IDs.
+DEFAULT_ENABLED = frozenset(
+    {
+        "temperature",
+        "battery",
+        "info_status_raw",
+        "info_mode_raw",
+        "warning_code_raw",
+        "solar_status_raw",
+        "last_success",
+    }
+)
 
 
 def integer(value, *, bits=32):

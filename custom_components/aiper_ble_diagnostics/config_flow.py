@@ -18,6 +18,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configure an Aiper identity without connecting during setup."""
 
     VERSION = 1
+    MINOR_VERSION = 2
 
     @staticmethod
     @callback

@@ -4,24 +4,30 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.8.1.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.0.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
 
 ## What it does
 
-- Polls fixed `S1_INFO` and `OpInfo` status requests using HA's Bluetooth framework.
-- Groups 23 sensor entities under one **Aiper Surfer S1 (BLE)** device.
-- Exposes temperature, raw temperature, time zone, raw solar status, and supported
-  OpInfo fields. Optional fields remain unavailable when the robot omits them.
+- Polls fixed `S1_INFO`, `OpInfo`, `INFO` and `WARN` status requests using HA's
+  Bluetooth framework. INFO/WARN are app-derived and await live firmware validation.
+- Groups entities under one **Aiper Surfer S1 (BLE)** device, with nine enabled
+  by default: temperature, battery, raw operating status/mode, raw warning code, raw solar status,
+  last successful poll, polling status and manual discovery result.
+- Keeps 18 optional/raw diagnostics disabled by default on new installations.
+  Missing fields remain unavailable; speculative OpInfo/Machine fields are not
+  presented as confirmed capabilities.
 - Provides a guarded `aiper_ble_diagnostics.poll_now` action.
 - Reports repeated manual failures to the status entity and exposes cached,
   privacy-limited transport-stage diagnostics.
 - Retains local-adapter-only discovery, read, query and listen diagnostics.
 
-Temperature sensor location is unverified. Raw battery fields are not verified
-SOC percentages. Solar codes and Wi-Fi RSSI sentinels are not interpreted.
-No pairing, provisioning, cleaning controls, arbitrary commands, cloud API or
-additional `INFO` query is implemented.
+Temperature sensor location is unverified. Battery comes only from INFO field 2,
+using the app's 0-100 battery-level scale, not from speculative `bat`/`cap` fields.
+Status/mode/solar/warning codes and Wi-Fi RSSI sentinels are not interpreted.
+No pairing, provisioning, cleaning controls, arbitrary commands or cloud API is
+implemented. See the [DP validation matrix](docs/info_dp_validation.md) and
+[additional APK query assessment](docs/apk_query_catalog.md).
 
 ## Requirements and safety
 
@@ -36,7 +42,7 @@ Polling is disabled by default. Enabling it explicitly authorises recurring
 status writes and notification subscriptions, including after a restart.
 This is not write-free passive reception. It never sends robot control commands.
 
-One cycle contains two bounded connections, one for each fixed request.
+One cycle contains four bounded connections, one for each fixed request.
 Readings publish only after matching, CRC-verified replies and confirmed cleanup.
 Failures back off; unsafe cleanup or unsupported security/protocol evidence
 suspends polling. Review the cause before reloading or restarting, which clears
@@ -70,6 +76,13 @@ Do not remove and re-add the integration. Keep the existing domain, config entry
 options and entity registry. Install this repository's component over the same
 directory and restart once after reviewing the update. Entity unique IDs and
 default IDs are retained, and user-renamed IDs take precedence.
+
+Version 0.9.0 adds `AT+INFO?` and `AT+WARN?` to enabled polling, including the first poll after
+restart. Review this expanded query scope before deployment. A once-only registry
+migration hides previously enabled optional diagnostics without disabling them,
+deleting their IDs or changing history. User-hidden, user-disabled and custom-named
+entities are left alone. Unhide any retained diagnostic in entity settings after
+migration if needed; later reloads do not re-hide it.
 
 Only one update mechanism should own the component directory. Before switching
 from a configuration-repository deployment to HACS, stop that deployment from
@@ -123,7 +136,7 @@ ruff format --config ruff-aiper.toml --check custom_components/aiper_ble_diagnos
 python -m pytest -q tests/aiper_ble_diagnostics --disable-socket --allow-unix-socket --asyncio-mode=auto
 ```
 
-The extracted v0.8.0 implementation has 416 offline tests. Tests use fake Bluetooth
+Tests use fake Bluetooth
 transports and cannot establish real-world radio reachability or prove every
 firmware variant compatible.
 

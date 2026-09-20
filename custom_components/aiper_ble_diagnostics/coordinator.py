@@ -70,6 +70,8 @@ def verified_values(response, query):
     values = query_telemetry(response, query)
     if values is None:
         raise ProtocolError("response_query_mismatch")
+    if query.query_type in {"INFO", "WARN"}:
+        return values
     if query.query_type == "S1_INFO":
         return {
             "temperature": values["temperature_celsius"],
@@ -184,7 +186,7 @@ class AiperCoordinator(DataUpdateCoordinator):
             # One connection per fixed request. HA chooses an available local
             # adapter or active proxy; requests are never replayed.
             async with asyncio.timeout(POLL_SECONDS):
-                for query_type in ("S1_INFO", "OpInfo"):
+                for query_type in ("S1_INFO", "OpInfo", "INFO", "WARN"):
                     if self.runtime.closing:
                         raise asyncio.CancelledError
                     query = Query(

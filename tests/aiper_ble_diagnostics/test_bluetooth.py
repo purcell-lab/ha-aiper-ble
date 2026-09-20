@@ -27,7 +27,7 @@ from custom_components.aiper_ble_diagnostics.probe import (
 from custom_components.aiper_ble_diagnostics.protocol import ProtocolError, query_frame
 
 from .helpers import TARGET
-from .test_polling import OP, OPTIONS, S1, response, setup
+from .test_polling import INFO, OP, OPTIONS, S1, WARN, response, setup
 from .test_protocol import frame
 
 PATH = "custom_components.aiper_ble_diagnostics"
@@ -113,7 +113,7 @@ def radio():
         assert kwargs["pair"] is False
         assert kwargs["max_attempts"] == 1
         assert kwargs["use_services_cache"] is False
-        query = S1 if len(clients) % 2 == 0 else OP
+        query = (S1, OP, INFO, WARN)[len(clients) % 4]
         client = Client(query)
         clients.append(client)
         kwargs["owners"].append(client)
@@ -161,11 +161,14 @@ async def test_proxy_only_fixed_query_and_cleanup(hass, radio):
 
 async def test_real_transport_wired_to_coordinator_and_sensors(hass, radio):
     entry = await setup(hass)
-    assert len(radio.clients) == 2
+    assert len(radio.clients) == 4
     assert bytes(radio.clients[1].written) == query_frame(OP)
     assert entry.runtime_data.coordinator.last_update_success
     assert hass.states.get("sensor.aiper_ble_temperature").state == "21.5"
-    assert hass.states.get("sensor.aiper_ble_wi_fi_rssi_raw").state == "-127"
+    assert hass.states.get("sensor.aiper_ble_battery").state == "73"
+    assert bytes(radio.clients[2].written) == query_frame(INFO)
+    assert bytes(radio.clients[3].written) == query_frame(WARN)
+    assert entry.runtime_data.coordinator.data["wifi_rssi_raw"] == -127
 
 
 async def test_all_dp_entities_registered_and_updated_from_full_reply(hass, radio):
@@ -200,11 +203,13 @@ async def test_all_dp_entities_registered_and_updated_from_full_reply(hass, radi
         for state in hass.states.async_all()
         if state.entity_id.startswith("sensor.aiper_ble_")
     ]
-    assert len(states) == 23
-    assert hass.states.get("sensor.aiper_ble_s1_temperature_raw").state == "215.0"
-    assert hass.states.get("sensor.aiper_ble_s1_time_zone").state == "UTC+10"
-    assert hass.states.get("sensor.aiper_ble_opinfo_battery_raw").state == "73"
-    assert hass.states.get("sensor.aiper_ble_wi_fi_network").state == "Test network"
+    assert len(states) == 9
+    data = entry.runtime_data.coordinator.data
+    assert data["temperature_raw"] == 215.0
+    assert data["s1_timezone"] == "UTC+10"
+    assert data["opinfo_bat_raw"] == 73
+    assert data["wifi_name"] == "Test network"
+    assert hass.states.get("sensor.aiper_ble_opinfo_battery_raw") is None
     assert all(state.state != "unavailable" for state in states)
 
 
@@ -511,4 +516,4 @@ async def test_proxy_only_entry_polls_without_local_adapter(hass, radio):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     assert entry.runtime_data.coordinator.last_update_success
-    assert len(radio.clients) == 2
+    assert len(radio.clients) == 4

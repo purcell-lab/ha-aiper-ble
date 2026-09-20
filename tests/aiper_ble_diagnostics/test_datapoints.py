@@ -22,7 +22,7 @@ from custom_components.aiper_ble_diagnostics.datapoints import (
 from custom_components.aiper_ble_diagnostics.sensor import TelemetrySensor
 
 from .helpers import TARGET
-from .test_polling import OP, OPTIONS, S1, response
+from .test_polling import INFO, OP, OPTIONS, S1, WARN, response
 
 
 def test_all_s1_fields_are_exposed_without_envelope_or_serial():
@@ -115,6 +115,8 @@ async def test_entities_show_only_current_cycle_values(hass):
     coordinator = runtime.coordinator
     coordinator.last_update_success = True
     coordinator.data = {
+        **verified_values(response("INFO"), INFO),
+        **verified_values(response("WARN"), WARN),
         **verified_values(
             response(data={"ack": "+S1_INFO:215,0\r\n", "timeZone": "UTC+10"}), S1
         ),

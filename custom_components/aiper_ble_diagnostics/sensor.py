@@ -5,7 +5,7 @@ from homeassistant.components.sensor import (
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import UnitOfTemperature
+from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
@@ -13,7 +13,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
 from .const import DOMAIN, SIGNAL_RESULT
-from .datapoints import SENSOR_NAMES
+from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
 from .device import device_info
 
 
@@ -36,11 +36,16 @@ class TelemetrySensor(CoordinatorEntity, SensorEntity):
         self.key = key
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = SENSOR_NAMES[key]
+        self._attr_entity_registry_enabled_default = key in DEFAULT_ENABLED
         # Preserve legacy defaults; HA's registry still honours user-renamed IDs.
         self.entity_id = f"sensor.{slugify(self._attr_name)}"
         if key == "temperature":
             self._attr_device_class = SensorDeviceClass.TEMPERATURE
             self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+            self._attr_state_class = SensorStateClass.MEASUREMENT
+        elif key == "battery":
+            self._attr_device_class = SensorDeviceClass.BATTERY
+            self._attr_native_unit_of_measurement = PERCENTAGE
             self._attr_state_class = SensorStateClass.MEASUREMENT
         else:
             self._attr_entity_category = EntityCategory.DIAGNOSTIC
@@ -92,8 +97,10 @@ class PollingStatusSensor(CoordinatorEntity, SensorEntity):
             "temperature_sensor_location": "unverified",
             "solar_status_mapping": "unverified",
             "wifi_rssi_interpretation": "unverified",
-            "opinfo_battery_interpretation": "raw_not_verified_soc",
-            "optional_machine_fields": "unavailable_unless_returned_in_opinfo",
+            "battery_source": "INFO_field_2_app_battLevel_validated_0_to_100",
+            "info_status_mode_mapping": "raw_codes_unverified",
+            "warning_code_mapping": "WARN_signed_int64_fault_meanings_unverified",
+            "optional_machine_fields": "unverified_disabled_by_default",
         }
 
 

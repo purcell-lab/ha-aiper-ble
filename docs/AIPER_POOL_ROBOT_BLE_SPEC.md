@@ -1,6 +1,6 @@
 # Aiper Surfer S1 BLE: discovered protocol and validation status
 
-Updated 20 September 2026 for integration version 0.8.0. This is a limited,
+Updated 20 September 2026 for integration version 0.9.0. This is a limited,
 evidence-led description of the legacy Surfer S1 telemetry path, not a universal
 Aiper protocol specification or an official vendor document.
 
@@ -163,6 +163,46 @@ displayed data object. `-127` is kept as a raw value. Its meaning as a sentinel,
 disconnected state or physical signal strength has not been established.
 There was no `bat`, `cap` or nested `Machine` telemetry in this response.
 
+### Separate INFO query: app-derived, not yet live-validated
+
+The S1 app panel requests `OpInfo`, `INFO` and `S1_INFO` separately.
+`S1PanelActivity.loadDataForCmd` maps the three INFO positions to status, mode
+and `battLevel`; its OpInfo handler reads Wi-Fi information only. The separate
+MQTT shadow `Machine` component does not establish a nested BLE OpInfo shape.
+
+The fixed request implemented in v0.9.0 is:
+
+```json
+{"type":"Machine","data":{"cmd":"AT+INFO?"},"chksum":10442}
+```
+
+The expected `Machine.data.ack` or string `report` is
+`+INFO:<status>,<mode>,<battery>\r\n`. This is an app-derived schema and a
+strict integration policy, **not a captured reply from the test robot**.
+Exactly three signed int32 decimal fields are accepted. A battery outside 0-100
+becomes unavailable, without clamping or preventing valid status/mode values
+from being used. Status and mode remain raw codes. Unknown extra fields or
+malformed matching responses fail closed. Report takes precedence over ack,
+as in the existing S1_INFO parser.
+
+See [DP validation and deployment acceptance](info_dp_validation.md) for the
+remaining live checks and the distinction between app evidence and wire evidence.
+
+### Separate WARN query: app-derived, not yet live-validated
+
+The S1 panel also issues `WARN`. Its consumer reads the first decimal field
+using Java `Long.parseLong` and assigns `warnCode`. Version 0.9.0 adds the
+fixed request `{"type":"Machine","data":{"cmd":"AT+WARN?"},"chksum":10501}`.
+The integration requires `+WARN:<signed-int64>\r\n` in Machine ack/report,
+with exactly one field. This strict shape is app-derived policy, not a captured
+WARN reply. Warning codes have no units, statistical state class or inferred
+fault labels. The existing full-data CRC, result and cleanup gates apply.
+No clear-warning or other setter is exposed.
+
+See the [APK query assessment](apk_query_catalog.md) for additional candidates
+including RECORD, ULTRAS, DevInfo and other-model configuration queries.
+They remain excluded from the executable allowlist.
+
 ### Response acceptance
 
 The polling coordinator requires the expected reply type and shape, integer
@@ -172,7 +212,7 @@ nonfinite numbers and unsupported envelopes are rejected.
 
 Early one-shot diagnostics reported response checksums as unverified.
 The later polling coordinator validates them before publishing sensors.
-Both fixed query replies and confirmed connection cleanup are required before
+All four fixed query replies and confirmed connection cleanup are required before
 a cycle publishes. A reply alone is not a successful polling cycle.
 There is no request ID, so a matching response and valid CRC do not by themselves
 prove request-response causality or exclude an unsolicited matching frame.
@@ -193,13 +233,19 @@ still cause a CCCD write by the Bluetooth stack.
 
 ## Published data points and uncertainty
 
-The component defines 20 telemetry sensors and three integration-status sensors.
-Optional fields are created but unavailable when absent or invalid; they are not
+The component defines 24 telemetry sensors and three integration-status sensors.
+On new installations, six telemetry sensors and all three status sensors are
+enabled by default. The remaining 18 diagnostics are disabled by default.
+Optional fields are unavailable when absent or invalid; they are not
 filled with zero, inferred from another query or dynamically generated from
 arbitrary response keys.
 
 | Reply field | Published value | Evidence and interpretation |
 | --- | --- | --- |
+| INFO third field | Battery, % | App `battLevel` and BatteryView 0-100 scale; live exchange/comparison pending |
+| INFO first field | Operating status raw | App-derived position; enum/live comparison pending |
+| INFO second field | Operating mode raw | App-derived position; enum/live comparison pending |
+| WARN first field | Warning code raw | App-derived signed int64; live response and fault meanings pending |
 | S1_INFO first field | Temperature, °C | Observed numeric reply; app-derived scale ÷10; physical sensor location unknown |
 | S1_INFO first field | Temperature raw | Observed |
 | S1_INFO second field | Solar status raw | Observed; enum meanings unverified |
@@ -222,11 +268,14 @@ arbitrary response keys.
 | OpInfo `Machine.visual` | Visual raw | Optional nested candidate |
 
 The other three sensors show last successful poll, polling status and the manual
-diagnostic result. All 23 entities are grouped under one integration-scoped HA
-device in version 0.8.0, without automatically merging into a cloud integration's
-device. Existing entity unique IDs remain unchanged.
+diagnostic result. All 27 entities are grouped under one integration-scoped HA
+device, without automatically merging into a cloud integration's device.
+Existing entity unique IDs remain unchanged. A once-only migration hides
+uncustomised existing optional diagnostics, but does not disable them, delete
+registry records or discard history. User hiding/disabling and custom names are
+preserved. Users may unhide them after migration; reloads respect that choice.
 
-Integer candidates accept signed 32-bit integers, except `warn_code`, which
+Integer candidates accept signed 32-bit integers, except `warn_code` and WARN, which
 accepts signed 64-bit. Booleans, numeric strings and floats are not accepted as
 these integer fields. Wi-Fi names must be printable, nonempty strings of at most
 32 UTF-8 bytes; the time-zone value is restricted to 1-64 characters matching
@@ -236,16 +285,17 @@ SSID state can appear in local HA state/history if returned. It is excluded from
 the integration's diagnostic export. Serial numbers, tokens, passwords and
 unrecognised response fields are not turned into sensors.
 
-### Battery / SOC lead
+### Battery evidence
 
 Static inspection found the Surfer app panel mapping `Machine.getCap()` to its
 battery-level view, and a separate `INFO` parser handling status, mode and battery
-level. This is a useful investigation lead, not evidence that the tested OpInfo
-reply carries SOC. The current integration does not issue `INFO` or `DevInfo`.
+level. This is not evidence that the tested OpInfo reply carries SOC. Version
+0.9.0 implements the separate fixed `INFO` and `WARN` queries, but not `DevInfo`.
 
 Neither `bat` nor `cap` is labelled as a battery percentage, and neither receives
-a battery device class. A future fixed-query experiment would need separately
-reviewed framing, safety bounds and comparison against the app's displayed SOC.
+a battery device class. Only INFO field 2 receives the battery class, based on
+the app's explicit `battLevel`/0-100 display mapping. A guarded live exchange and
+comparison against the app's displayed percentage remain required.
 
 ## HA Bluetooth transport and operational bounds
 
@@ -260,7 +310,7 @@ The following are implementation policies, not measured firmware capacities:
 
 | Bound | Current policy |
 | --- | --- |
-| Queries per cycle | S1_INFO, then OpInfo, each in a fresh bounded connection |
+| Queries per cycle | S1_INFO, OpInfo, INFO, WARN, each in a fresh bounded connection |
 | Actual connection attempts | One per exchange; no retry loop |
 | Connect / exchange deadlines | 30 seconds / 15 seconds |
 | Write deadline | 5 seconds per chunk |
