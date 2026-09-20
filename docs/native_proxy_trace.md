@@ -103,6 +103,24 @@ does not log every successful MTU or GATT event at DEBUG.
 
 ## Interpretation limits
 
+The v0.9.9 live capture recorded a proxy connection request, `connecting`,
+`unexpected_open`, `open_error(status=133)` and `slot_freed(reason=133)`, before
+any Aiper write. This narrows the observed failure to the native connection-open
+path; it does not identify the root cause or prove an MTU failure.
+
+v0.9.10 retains the numeric address type from the native connect line, adds
+the cached per-route address type to passive snapshots, and exposes BlueZ's
+allowlisted `public`/`random` metadata in the passive preflight. It also accepts
+two-to-four-digit hexadecimal disconnect reasons: `%02x` is a minimum width,
+so the prior two-digit-only parser could omit `0x100`. These fields never
+override a connection's address type or trigger scans.
+
+[ESPHome issue #18640](https://github.com/esphome/esphome/issues/18640) contains
+a closely matching timeout/status-133 sequence and an address-type hypothesis.
+Its reporter closed it after re-adopting proxies; that is not proof of the
+reported API-key collision theory, nor evidence that the same cause applies
+here. Compare cached and native values before proposing any state reset.
+
 - Times are HA receipt UTC and monotonic offsets, not MCU event timestamps.
   Network buffering can delay delivery.
 - Firmware compiled/runtime logging below DEBUG may omit MTU/GATT events.
