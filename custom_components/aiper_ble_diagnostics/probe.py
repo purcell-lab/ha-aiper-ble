@@ -4,6 +4,7 @@ import asyncio
 import re
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
+from time import monotonic
 
 from dbus_fast import BusType, Message, MessageType
 from dbus_fast.aio import MessageBus
@@ -76,6 +77,17 @@ def unpack(value):
     if isinstance(value, (list, tuple)):
         return [unpack(v) for v in value]
     return value
+
+
+def rssi_dbm(properties):
+    """Return the pinned adapter's own last observed signal level, or None.
+
+    BlueZ drops RSSI from a disconnected device once it is no longer being
+    observed, so None records "not currently seen by this adapter" rather than
+    a missing measurement. Bounds keep an unexpected value out of diagnostics.
+    """
+    value = properties.get("RSSI")
+    return value if type(value) is int and -127 <= value <= 20 else None
 
 
 def device_summary(properties):
@@ -439,11 +451,14 @@ async def probe(api, target, report, connect=False, *, read=False, query=None):
             return
         # Recheck immediately before Connect to reduce shared-adapter races.
         fresh_objects = await asyncio.wait_for(api.objects(), 5)
-        validate(fresh_objects, target)
+        fresh = validate(fresh_objects, target)
         if query is not None:
             validate_query_protocol(fresh_objects, target, query)
+        # Passive observation of the state this connection actually starts from.
+        report["preconnect_rssi_dbm"] = rssi_dbm(fresh)
         attempted = True
         report["stage"] = "connect"
+        connect_started = monotonic()
         try:
             await asyncio.wait_for(api.connect(), CONNECT_SECONDS)
         except BluezError as exc:
@@ -455,6 +470,9 @@ async def probe(api, target, report, connect=False, *, read=False, query=None):
                 attempted = False
                 report["cleanup"] = "not_touched_possible_other_client"
             raise
+        finally:
+            # Record refusals and cancellations too, not only slow successes.
+            report["connect_ms"] = round((monotonic() - connect_started) * 1000, 3)
         report["stage"] = "service_resolution"
         async with asyncio.timeout(RESOLVE_SECONDS):
             while True:

@@ -70,7 +70,10 @@ disabling proxies or changing the production polling transport.
   while recurring polling is disabled. These return diagnostics, not partial
   sensor refreshes.
 - Reports repeated manual failures to the status entity and exposes cached,
-  privacy-limited transport-stage diagnostics.
+  privacy-limited transport-stage diagnostics, including bounded per-connect
+  [direct-local connect observations](docs/local_connect_observability.md).
+- Keeps the last-successful-poll timestamp visible while polling fails, so the
+  age of the readings stays readable; measured values still become unavailable.
 - Retains local-adapter-only discovery, read, query and listen diagnostics.
 
 Temperature sensor location is unverified. Battery comes only from INFO field 2,
@@ -169,6 +172,10 @@ With a response requested, the action returns `status` and
 
 - **Unavailable optional sensors:** The robot did not return those fields.
   Unavailable does not mean zero.
+- **Failed polling with a visible timestamp:** Battery and temperature go
+  unavailable on the first failed cycle, while last successful poll keeps showing
+  when the readings were last fresh. Diagnostics still report the telemetry as
+  not current.
 - **`identity_changed`:** A selectable route lacks the exact configured robot
   name/address. Nameless proxy discovery records can trigger this guard even if
   another adapter has the expected name. The integration fails closed; `poll_now`

@@ -36,6 +36,8 @@ ISOLATED_QUERIES = {
 }
 POLL_DETAIL_FIELDS = (
     "query_type",
+    "cycle_query_index",
+    "seconds_since_previous_query",
     "response_evidence",
     "transport",
     "transport_diagnostics",
@@ -44,6 +46,8 @@ POLL_DETAIL_FIELDS = (
     "failure_stage",
     "error_code",
     "error_category",
+    "preconnect_rssi_dbm",
+    "connect_ms",
     "write_attempts",
     "notification_count",
     "received_bytes",
@@ -350,17 +354,25 @@ class AiperCoordinator(DataUpdateCoordinator):
             values = {}
             # One connection per fixed request. Local mode pins the saved BlueZ
             # adapter; HA mode selects a route. Never retry or change transport.
+            previous_finished = None
             async with asyncio.timeout(POLL_SECONDS):
-                for query_type in self.poll_queries:
+                for index, query_type in enumerate(self.poll_queries, 1):
                     if self.runtime.closing:
                         raise asyncio.CancelledError
                     query = Query(
                         "omit_empty_crc", "request", self.allow_missing, query_type
                     )
-                    report = {"query_type": query_type}
+                    report = {"query_type": query_type, "cycle_query_index": index}
+                    if previous_finished is not None:
+                        # Measured from the previous query's returned transport
+                        # call, which completes after its confirmed cleanup.
+                        report["seconds_since_previous_query"] = round(
+                            asyncio.get_running_loop().time() - previous_finished, 3
+                        )
                     reports.append(report)
                     execute = local_query_once if self.use_local_adapter else query_once
                     await execute(self.hass, self.runtime.target, report, query)
+                    previous_finished = asyncio.get_running_loop().time()
                     if report.get("status") == "cleanup_requires_review":
                         self.suspended = True
                     # The diagnostic probe records cancellation after cleanup.
