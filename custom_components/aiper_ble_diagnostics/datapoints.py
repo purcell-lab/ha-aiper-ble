@@ -21,6 +21,28 @@ MACHINE_FIELDS = {
     "visual": "visual",
 }
 
+# Fixed historical unique-ID suffixes, not a pattern or a response-derived list.
+# These speculative sensors are retired; parser candidates remain available for
+# offline investigation without advertising unsupported robot capabilities.
+RETIRED_ENTITY_KEYS = frozenset(
+    {
+        "opinfo_bat_raw",
+        "opinfo_status_raw",
+        "opinfo_link_raw",
+        "opinfo_machine_cap_raw",
+        "opinfo_machine_mode_raw",
+        "opinfo_machine_solar_status_raw",
+        "opinfo_machine_status_raw",
+        "opinfo_machine_temp_raw",
+        "opinfo_machine_warn_raw",
+        "opinfo_machine_warn_code_raw",
+        "opinfo_machine_in_water_raw",
+        "opinfo_machine_link_raw",
+        "opinfo_machine_light_raw",
+        "opinfo_machine_visual_raw",
+    }
+)
+
 SENSOR_NAMES = {
     "temperature": "Aiper BLE temperature",
     "battery": "Aiper BLE battery",
@@ -32,16 +54,11 @@ SENSOR_NAMES = {
     "s1_timezone": "Aiper BLE S1 time zone",
     "wifi_rssi_raw": "Aiper BLE Wi-Fi RSSI raw",
     "wifi_name": "Aiper BLE Wi-Fi network",
-    **{f"opinfo_{field}_raw": name for field, name in OPINFO_FIELDS.items()},
-    **{
-        f"opinfo_machine_{field}_raw": f"Aiper BLE OpInfo Machine {name} raw"
-        for field, name in MACHINE_FIELDS.items()
-    },
     "last_success": "Aiper BLE last successful poll",
 }
 
 # Useful operational entities, without duplicate raw temperature or speculative
-# OpInfo fields. Existing registry entries and opt-in diagnostics retain IDs.
+# OpInfo fields. Retained registry entries and opt-in diagnostics retain IDs.
 DEFAULT_ENABLED = frozenset(
     {
         "temperature",

@@ -18,7 +18,7 @@ from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_RESULT
 from .coordinator import ISOLATED_QUERIES, AiperCoordinator
-from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
+from .datapoints import DEFAULT_ENABLED, RETIRED_ENTITY_KEYS, SENSOR_NAMES
 from .probe import Target, open_bluez
 from .probe import probe as run_probe
 from .protocol import Listen, Query, preview
@@ -317,11 +317,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
-    """Once-only presentation migration, without deleting or disabling history.
+    """Migrate presentation, then retire an exact set of unsupported entities.
 
-    Existing enabled diagnostics stay functional for automations, but leave the
-    default device view. Preserve user hiding/disabling and custom display names.
-    Users can unhide a diagnostic after this migration; reloads do not undo it.
+    Retained entities preserve registry IDs and user choices. Retired sensors
+    are removed even if renamed; no broad matching or recorder purge is used.
     """
     if entry.version != 1:
         return False
@@ -340,6 +339,17 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                     entity.entity_id, hidden_by=er.RegistryEntryHider.INTEGRATION
                 )
         hass.config_entries.async_update_entry(entry, minor_version=2)
+    if entry.minor_version < 3:
+        registry = er.async_get(hass)
+        retired_ids = {f"{entry.entry_id}_{key}" for key in RETIRED_ENTITY_KEYS}
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if (
+                entity.domain == "sensor"
+                and entity.platform == DOMAIN
+                and entity.unique_id in retired_ids
+            ):
+                registry.async_remove(entity.entity_id)
+        hass.config_entries.async_update_entry(entry, minor_version=3)
     return True
 
 

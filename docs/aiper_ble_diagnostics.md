@@ -30,11 +30,13 @@ If company-zero advertisement evidence is absent, the separately labelled persis
 
 The historical v0.7.0 candidate list is in [Entity coverage](aiper_ble_proxy_polling.md#entity-coverage).
 It included speculative direct OpInfo and nested Machine fields, not confirmed
-robot capabilities. Version 0.9.0 registers 27 entities but enables only nine
-by default: six operational readings and three status/timestamp indicators.
-Raw duplicate temperature, time zone, Wi-Fi metadata and all speculative
-OpInfo/Machine fields are opt-in diagnostics. Existing optional entities are
-hidden once, not deleted or disabled. Missing data is never filled with zero.
+robot capabilities. After the [entity retirement](entity_retirement.md), 13
+entities remain, nine enabled by default: six operational readings and three
+status/timestamp indicators. Raw duplicate temperature, time zone and the two
+Wi-Fi metadata sensors remain opt-in diagnostics. The 14 speculative
+OpInfo/Machine registry entries are removed once, even if renamed or disabled.
+Retained optional entities preserve their IDs and user choices. Missing data is
+never filled with zero.
 
 Telemetry publishes atomically only after all four replies have the expected query shape, integer `res: 0`, matching legacy CRC and confirmed notification shutdown/disconnection. CRC covers compact UTF-8 JSON `data` in received key order using seed `0x9966`; it detects corruption, not spoofing. Invalid/missing CRC, unsuccessful replies and partial cycles do not publish. Disabled or failed polling makes telemetry unavailable rather than presenting old readings as current. No battery/mode fields are invented from absent data, and serials, raw frames and complete responses never enter telemetry entities or coordinator data. The existing discovery-result entity and unique ID are unchanged; it continues to report manual actions separately.
 

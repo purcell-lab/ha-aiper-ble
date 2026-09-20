@@ -100,7 +100,7 @@ class PollingStatusSensor(CoordinatorEntity, SensorEntity):
             "battery_source": "INFO_field_2_app_battLevel_validated_0_to_100",
             "info_status_mode_mapping": "raw_codes_unverified",
             "warning_code_mapping": "WARN_signed_int64_fault_meanings_unverified",
-            "optional_machine_fields": "unverified_disabled_by_default",
+            "optional_machine_fields": "unverified_entities_retired",
         }
 
 

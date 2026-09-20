@@ -19,13 +19,17 @@ repeated full-cycle production validation is a separate acceptance step.
 | S1 time zone | Live metadata, not operational telemetry | Disabled by default, diagnostic |
 | OpInfo Wi-Fi RSSI | Live reply contains -127; sentinel meaning unverified | Disabled by default, raw diagnostic without dBm |
 | OpInfo network name | App-derived, absent from observed reply | Disabled by default; privacy-sensitive if enabled |
-| OpInfo bat/status/link | Speculative, not returned in observed reply | Disabled by default; not used as INFO substitutes |
-| OpInfo nested Machine fields | Speculative shape, not returned; app cloud Machine is separate | Disabled by default; not treated as confirmed support |
+| OpInfo bat/status/link | Speculative, not returned in observed reply | Entities retired; not used as INFO substitutes |
+| OpInfo nested Machine fields | Speculative shape, not returned; app cloud Machine is separate | Entities retired; parser candidates are not confirmed entity support |
 | Last successful poll, polling status, manual result | Integration-generated operational health | Enabled; manual result is independent of polling |
 
-There are 27 registry entries: nine enabled by default and 18 opt-in diagnostics.
+There are 13 registry entries: nine enabled by default and four opt-in diagnostics.
+The [entity retirement migration](entity_retirement.md) removes 14 exact
+speculative OpInfo registry entries when upgrading to config-entry minor version 3.
+This applies even to renamed or disabled retired records. Retained IDs and
+user choices are unchanged; the migration does not invoke a recorder purge.
 For existing installations, migration from config-entry minor version 1 to 2
-hides eligible optional entities once. It does not disable them or remove their
+hides eligible retained optional entities once. It does not disable them or remove their
 IDs/history, and skips user-hidden, user-disabled and custom-named entries.
 Users can unhide a retained diagnostic after migration; later reloads preserve
 that choice. Existing dashboards that explicitly name a hidden entity still work.
