@@ -160,7 +160,7 @@ def endpoint(client, query):
     return char
 
 
-async def query_once(hass, target, report, query):
+async def query_once(hass, target, report, query, *, pin_local=False):
     """Connect, issue one fixed request, stop notifications, disconnect.
 
     Publication is the coordinator's responsibility after CRC and cleanup checks.
@@ -174,13 +174,14 @@ async def query_once(hass, target, report, query):
     decoder = Decoder()
     overflow = False
     accepting = False
+    transport = "ha_bluetooth_local" if pin_local else "ha_bluetooth"
     report.update(
         status="running",
-        transport="ha_bluetooth",
+        transport=transport,
         write_attempts=0,
         phase="route_validation",
     )
-    diagnostics = TransportDiagnostics(report, "ha_bluetooth")
+    diagnostics = TransportDiagnostics(report, transport)
     diagnostics.data["timeouts_seconds"] = {
         "outer_connect": CONNECT_SECONDS,
         "exchange": EXCHANGE_SECONDS,
@@ -212,10 +213,22 @@ async def query_once(hass, target, report, query):
 
     try:
         device = validate_routes(hass, target, query)
+        client_class = single_attempt_client_class(diagnostics)
+        if pin_local:
+            from .local_bleak import (
+                assert_local_backend,
+                pinned_client_class,
+                runtime_versions,
+            )
+
+            versions = await hass.async_add_executor_job(runtime_versions)
+            client_class = pinned_client_class(
+                client_class, target, diagnostics, versions
+            )
         phase("connect")
         async with asyncio.timeout(CONNECT_SECONDS) as connect_timeout:
             client = await establish_connection(
-                single_attempt_client_class(diagnostics),
+                client_class,
                 device,
                 "Aiper BLE",
                 owners=owners,
@@ -228,6 +241,8 @@ async def query_once(hass, target, report, query):
         async with asyncio.timeout(EXCHANGE_SECONDS) as exchange_timeout:
             phase("connected_route_validation")
             validate_routes(hass, target, query, connected=True)
+            if pin_local:
+                assert_local_backend(client, target)
             phase("endpoint_validation")
             char = endpoint(client, query)
             phase("start_notify")
@@ -235,6 +250,8 @@ async def query_once(hass, target, report, query):
             await client.start_notify(char, notified)
             phase("prewrite_validation")
             validate_routes(hass, target, query, connected=True)
+            if pin_local:
+                assert_local_backend(client, target)
             if endpoint(client, query).handle != char.handle:
                 raise ProtocolError("notification_endpoint_changed")
             if not client.is_connected:

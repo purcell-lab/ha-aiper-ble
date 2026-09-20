@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 from .bluetooth_transport import query_once
 from .const import DOMAIN
 from .datapoints import opinfo_values, timezone
+from .local_bleak import query_once as local_bleak_query_once
 from .local_transport import query_once as local_query_once
 from .protocol import ProtocolError, Query, crc16, query_telemetry
 
@@ -23,6 +24,7 @@ MIN_INTERVAL = 300
 MAX_INTERVAL = 3600
 POLL_SECONDS = 180
 SINGLE_QUERY_SECONDS = 60
+LOCAL_BLEAK_SERVICE = "query_opinfo_local_bleak"
 ISOLATED_QUERIES = {
     "query_s1_info": "S1_INFO",
     "query_opinfo": "OpInfo",
@@ -176,7 +178,7 @@ class AiperCoordinator(DataUpdateCoordinator):
                 "last_successful_poll": data["last_success"].isoformat(),
             }
 
-    async def async_query_isolated(self, query_type):
+    async def async_query_isolated(self, query_type, *, local_bleak=False):
         """One production-transport query, without publishing partial telemetry.
 
         Recurring polling must be disabled so automatic cycles cannot contaminate
@@ -185,6 +187,8 @@ class AiperCoordinator(DataUpdateCoordinator):
         """
         if query_type not in ISOLATED_QUERIES.values():
             raise ServiceValidationError("Select a fixed diagnostic query.")
+        if local_bleak and query_type != "OpInfo":
+            raise ServiceValidationError("Same-radio diagnostics allow only OpInfo.")
         if self.enabled:
             raise ServiceValidationError("Disable recurring polling before bisection.")
         if self.runtime.closing or self.suspended:
@@ -207,6 +211,8 @@ class AiperCoordinator(DataUpdateCoordinator):
         try:
             async with asyncio.timeout(SINGLE_QUERY_SECONDS):
                 execute = local_query_once if self.use_local_adapter else query_once
+                if local_bleak:
+                    execute = local_bleak_query_once
                 await execute(self.hass, self.runtime.target, report, query)
                 if report.get("status") == "cleanup_requires_review":
                     self.suspended = True
@@ -280,7 +286,11 @@ class AiperCoordinator(DataUpdateCoordinator):
             self.next_attempt = finished + self.interval
             # Only verified allowlisted scalars, never raw frames or identifiers.
             self.runtime.last_result = {
-                "mode": f"isolated_{self.transport}_query",
+                "mode": (
+                    "isolated_ha_bluetooth_local_query"
+                    if local_bleak
+                    else f"isolated_{self.transport}_query"
+                ),
                 "started_utc": started,
                 "finished_utc": dt_util.utcnow().isoformat(),
                 **{key: report[key] for key in POLL_DETAIL_FIELDS if key in report},
