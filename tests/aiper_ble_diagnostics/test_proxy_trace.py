@@ -623,6 +623,20 @@ async def test_proxy_resolution_fails_closed(hass, session, invalid):
 REAL_RESOLVE = trace.resolve_proxy
 
 
+@pytest.mark.parametrize("version", sorted(trace.SUPPORTED_FIRMWARE))
+def test_source_reviewed_firmware_versions_resolve(hass, session, version):
+    """Only exact allowlisted firmware strings pass; no prefix or range match."""
+    with patch.object(
+        hass.config_entries, "async_get_entry", return_value=session.entry
+    ):
+        session.info.esphome_version = version
+        assert REAL_RESOLVE(hass, "proxy")[2] == SOURCE
+        for near_miss in (version + ".1", version[:-1], version + "b1"):
+            session.info.esphome_version = near_miss
+            with pytest.raises(ProtocolError, match="firmware_or_identity"):
+                REAL_RESOLVE(hass, "proxy")
+
+
 @pytest.mark.parametrize("address", [None, "proxy.local", "invalid"])
 async def test_no_private_dns_scanner_is_created(hass, session, address):
     session.shared.connected_address = address

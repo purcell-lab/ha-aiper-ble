@@ -25,6 +25,10 @@ SUPPORTED_VERSIONS = {
     "bleak-esphome": "4.0.0",
     "aioesphomeapi": "46.2.0",
 }
+# Exact firmware strings whose native log formats were source-reviewed: the
+# 2026.9.0 bluetooth_connection backend, and the pre-2026.7 esp32_ble_client
+# format used for the issue #7 regression comparison. Not a range.
+SUPPORTED_FIRMWARE = ("2026.9.0", "2026.5.3", "2026.5.1")
 MAX_EVENTS = 128
 MAX_LINES = 2048
 MAX_BYTES = 262144
@@ -281,7 +285,7 @@ def resolve_proxy(hass, entry_id):
     if (
         not source
         or runtime.bluetooth_device.mac_address != source
-        or info.esphome_version != "2026.9.0"
+        or info.esphome_version not in SUPPORTED_FIRMWARE
     ):
         raise ProtocolError("proxy_firmware_or_identity_unsupported")
     return entry, runtime, source
@@ -400,7 +404,13 @@ async def query_once(hass, target, report, query, entry_id):
     client.set_debug(False)
     capture = EventCapture(target.address)
     trace = report["proxy_trace"] = capture.data
-    trace.update(runtime_versions=versions, log_cleanup="not_started")
+    trace.update(
+        runtime_versions=versions,
+        # Allowlisted exact string only; interpretation of legacy versus
+        # modern events depends on it.
+        proxy_firmware=runtime.device_info.esphome_version,
+        log_cleanup="not_started",
+    )
     unsubscribe = None
     subscription_attempted = False
 

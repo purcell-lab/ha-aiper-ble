@@ -26,8 +26,15 @@ application writes. No other scanner is unregistered or modified.
 
 Package support is deliberately narrow: habluetooth 6.26.11, Bleak 3.0.2,
 bleak-retry-connector 4.7.0, bleak-esphome 4.0.0 and aioesphomeapi 46.2.0.
-ESPHome firmware must report 2026.9.0. Different versions fail closed.
-This is a compatibility gate, not proof of firmware binary provenance.
+ESPHome firmware must report exactly one of 2026.9.0, 2026.5.3 or 2026.5.1.
+Any other string fails closed before any BLE activity. This is a compatibility
+gate, not proof of firmware binary provenance: 2026.9.0 uses the modern
+`bluetooth_connection` log format, and the two 2026.5 versions use the legacy
+`esp32_ble_client` format, both of which the parser matches. The 2026.5
+entries exist for the issue #7 regression comparison, in which one proxy is
+reflashed to a pre-2026.7 release and the same bounded action is repeated
+once. The exact allowlisted firmware string is published as `proxy_firmware`
+in the trace so the two log formats are never confused in a result.
 
 ## Native logging
 
