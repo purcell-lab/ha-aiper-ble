@@ -94,6 +94,7 @@ class PollingStatusSensor(CoordinatorEntity, SensorEntity):
             "error_code": self.coordinator.error_code,
             "consecutive_failures": self.coordinator.failures,
             "configured_interval_seconds": self.coordinator.interval,
+            "configured_queries": list(self.coordinator.poll_queries),
             "temperature_sensor_location": "unverified",
             "solar_status_mapping": "unverified",
             "wifi_rssi_interpretation": "unverified",

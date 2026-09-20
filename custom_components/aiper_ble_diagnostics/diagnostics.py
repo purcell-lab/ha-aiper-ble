@@ -22,6 +22,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "consecutive_failures": runtime.coordinator.failures,
                 "allow_missing_advertisement": runtime.coordinator.allow_missing,
                 "transport": runtime.coordinator.transport,
+                "configured_queries": list(runtime.coordinator.poll_queries),
                 "last_poll_details": dict(runtime.coordinator.last_poll_details),
                 "last_poll_queries": [
                     dict(item) for item in runtime.coordinator.last_poll_queries

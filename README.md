@@ -4,12 +4,17 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.7.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.11.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
 
-This diagnostic-only change adds an opt-in
-[native ESPHome proxy trace](docs/native_proxy_trace.md). It is not live-validated
-and does not change production polling or enable proxy fallback.
+Direct-local polling now requests only `S1_INFO` (temperature) and `INFO`
+(battery state of charge). It no longer connects for `OpInfo` or `WARN`.
+This halves the connections per local cycle without changing the polling
+interval, cleanup checks, atomic publication or transport selection. See
+[SOC and temperature polling](docs/soc_temperature_polling.md).
+
+The opt-in [native ESPHome proxy trace](docs/native_proxy_trace.md) remains
+available for diagnostics; it does not enable proxy fallback.
 
 Version 0.9.6 added an explicit, version-gated same-local-radio diagnostic action.
 It does not change production transport selection, retry policy or polling
@@ -48,12 +53,14 @@ For issue #7, an explicit
 BlueZ with HA-managed local Bleak without
 disabling proxies or changing the production polling transport.
 
-- Polls fixed `S1_INFO`, `OpInfo`, `INFO` and `WARN` status requests using the
-  selected local BlueZ or HA Bluetooth transport. All four have live response
-  evidence; raw code meanings and comparison against the app remain unverified.
+- Direct local BlueZ polls only fixed `S1_INFO` and `INFO` requests for temperature
+  and SOC. The HA Bluetooth path retains its four-query cycle (`S1_INFO`,
+  `OpInfo`, `INFO`, `WARN`); no transport is switched automatically.
 - Groups entities under one **Aiper Surfer S1 (BLE)** device, with nine enabled
   by default: temperature, battery, raw operating status/mode, raw warning code, raw solar status,
-  last successful poll, polling status and manual discovery result.
+  last successful poll, polling status and manual discovery result. In direct-local
+  mode, warning and OpInfo-only entities are unavailable because those queries
+  are no longer polled; entity registry entries are not deleted.
 - Keeps four optional diagnostics disabled by default: raw temperature, time
   zone, Wi-Fi RSSI and network name. Retires 14 speculative OpInfo/Machine
   entities that were not returned by the S1.
