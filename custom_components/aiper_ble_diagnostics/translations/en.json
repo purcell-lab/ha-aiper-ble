@@ -1,0 +1,104 @@
+{
+  "title": "Aiper BLE Diagnostics",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select an Aiper Bluetooth target",
+        "description": "Uses HA shared Bluetooth discovery, including active ESPHome proxies. Setup will not connect or start a scanner. Polling uses HA-managed routes. Legacy diagnostic actions still require a local-adapter entry.",
+        "data": {"device": "Known Aiper device"}
+      }
+    },
+    "error": {"device_changed": "The selected device disappeared. Select a current device."},
+    "abort": {
+      "already_configured": "This Aiper device already has a diagnostic entry.",
+      "local_bluetooth_unavailable": "HA Bluetooth is unavailable. Check the Bluetooth integration and its adapters or active proxies.",
+      "no_local_aiper": "No eligible Aiper is cached by HA Bluetooth or the legacy local adapter. Bring an active proxy or adapter within range. This tool does not start a scan."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Guarded Surfer S1 polling",
+        "description": "Experimental polling over HA Bluetooth, including active ESPHome proxies. HA selects the connection route. Enabling authorises recurring S1_INFO and OpInfo requests, notification subscriptions and disconnections, including after HA restarts. Keep other clients idle; disable polling and wait for cleanup before using the app. Remote routes do not expose local pairing/trust or notification-ownership checks. No pairing or robot control commands. Temperature sensor location, solar codes and Wi-Fi RSSI meaning remain unverified. Failures back off; unsafe cleanup suspends polling.",
+        "data": {
+          "polling_enabled": "Enable recurring BLE status queries",
+          "poll_interval": "Successful poll interval in seconds (300 to 3600)",
+          "confirm_exclusive_access": "I authorise recurring queries and will keep other BLE clients idle",
+          "allow_missing_advertisement": "Authorise S1 legacy queries when advertisement evidence is missing"
+        },
+        "data_description": {
+          "allow_missing_advertisement": "Persistent exception, unlike the one-shot action confirmation. ECDH hints, key-exchange services, malformed advertisements and identity or endpoint changes still veto polling."
+        }
+      }
+    },
+    "error": {
+      "exclusive_access_required": "Authorise recurring queries and exclusive device access before enabling polling."
+    }
+  },
+  "services": {
+    "poll_now": {
+      "name": "Poll Aiper telemetry now",
+      "description": "Run one guarded S1_INFO and OpInfo cycle through HA Bluetooth and update sensors. Polling must already be enabled and authorised. May shorten offline failure backoff, but cannot bypass the configured normal interval, an active probe, suspension, protocol checks or disconnect cleanup. No robot controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed and other BLE clients are idle."}
+      }
+    },
+    "listen_once": {
+      "name": "Listen for Aiper notifications once",
+      "description": "Connect once and subscribe for at most 60 seconds, including startup notifications. No application reads or writes, queries, controls or retries. Subscription itself may write the CCCD. Stops notifications and disconnects.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_notifications": {"name": "Bounded notification subscription authorised", "description": "Authorise one 60-second listen, including notification-enable descriptor writes and disconnect cleanup."},
+        "confirm_legacy_probe": {"name": "Guarded listen without advertisement evidence", "description": "Optional per-call exception for missing advertisement data. ECDH, malformed data, identity changes and unsafe endpoints still veto the test."}
+      }
+    },
+    "protocol_preview": {
+      "name": "Preview one status request offline",
+      "description": "Build one fixed OpInfo or S1_INFO frame without Bluetooth. Based on static inspection of Aiper 3.6.1 build 82, not a verified robot exchange.",
+      "fields": {
+        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (default) or S1_INFO (temperature and solar candidates). One request only; never both or an arbitrary AT command."},
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo; include_empty_crc models an explicit empty object using seed 0x9966. S1_INFO has nonempty data and always includes CRC regardless of this choice."},
+        "write_mode": {"name": "Write transport", "description": "command requires write-without-response; request requires write. Both transports appear in app 3.6.1. The selected flag must exist; no automatic fallback."}
+      }
+    },
+    "query_once": {
+      "name": "Query Aiper status once",
+      "description": "Experimental S1 legacy-XOR query. Enables notifications (CCCD write), sends either OpInfo or S1_INFO, waits within a fixed deadline, stops notifications and disconnects. Not write-free. No controls, pairing, retries or automatic fallback.",
+      "fields": {
+        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (default) or S1_INFO (temperature and solar candidates). Only the selected request is sent. This manual diagnostic action does not update the polling sensors."},
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo. S1_INFO always includes the mandatory nonempty-data CRC regardless of this choice. Hardware compatibility remains unverified."},
+        "write_mode": {"name": "Write transport", "description": "command requires write-without-response; request requires write. The app supports both, but this test never switches transport automatically."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle, and the robot stationary."},
+        "confirm_query_write": {"name": "One selected query write authorised", "description": "Authorise exactly the selected OpInfo or S1_INFO request, potentially split across multiple ATT writes. No retries or setters."},
+        "confirm_notifications": {"name": "Notification subscription authorised", "description": "Authorise StartNotify and StopNotify, including their CCCD writes. This is not a write-free test."},
+        "confirm_legacy_probe": {"name": "Guarded probe without advertisement evidence", "description": "Optional, false by default and never saved. Authorise this S1-only legacy experiment if company-zero advertisement data is absent. Requires a resolved, exact legacy GATT endpoint. ECDH hints, key-exchange characteristics and malformed data still veto the query."}
+      }
+    },
+    "read_once": {
+      "name": "Read one raw Aiper sample",
+      "description": "Connect once, validate the exact readable Aiper endpoint, read once within five seconds, then disconnect. No retries, writes, notifications, pairing or robot commands. Raw bytes are not decoded telemetry.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, all other BLE clients are idle and the robot is stationary."},
+        "confirm_read_only": {"name": "One raw read authorised", "description": "Authorise one read of the known Aiper characteristic. Keep the unparsed response private."}
+      }
+    },
+    "preflight": {
+      "name": "Check discovery prerequisites",
+      "description": "Validate existing local adapter/device metadata. Does not initiate a BLE connection.",
+      "fields": {"entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."}}
+    },
+    "discover": {
+      "name": "Discover GATT services once",
+      "description": "Connect once, list GATT metadata, then disconnect. No characteristic-value reads/writes, pairing or notification subscription. Keep the robot stationary and other BLE clients idle.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
+        "confirm_app_closed": {"name": "App closed and test authorised", "description": "Confirm the Aiper app is closed, other BLE clients are idle, and this single connection is authorised."}
+      }
+    }
+  }
+}
