@@ -24,6 +24,8 @@ MIN_INTERVAL = 300
 MAX_INTERVAL = 3600
 POLL_SECONDS = 180
 SINGLE_QUERY_SECONDS = 60
+LOCAL_POLL_QUERIES = ("S1_INFO", "INFO")
+HA_POLL_QUERIES = ("S1_INFO", "OpInfo", "INFO", "WARN")
 LOCAL_BLEAK_SERVICE = "query_opinfo_local_bleak"
 PROXY_TRACE_SERVICE = "query_opinfo_proxy_trace"
 ISOLATED_QUERIES = {
@@ -114,6 +116,9 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.allow_missing = entry.options.get("allow_missing_advertisement") is True
         self.use_local_adapter = entry.options.get("use_local_adapter") is True
         self.transport = "local_bluez" if self.use_local_adapter else "ha_bluetooth"
+        self.poll_queries = (
+            LOCAL_POLL_QUERIES if self.use_local_adapter else HA_POLL_QUERIES
+        )
         self.status = "waiting" if self.enabled else "disabled"
         self.error_code = None
         self.suspended = False
@@ -346,7 +351,7 @@ class AiperCoordinator(DataUpdateCoordinator):
             # One connection per fixed request. Local mode pins the saved BlueZ
             # adapter; HA mode selects a route. Never retry or change transport.
             async with asyncio.timeout(POLL_SECONDS):
-                for query_type in ("S1_INFO", "OpInfo", "INFO", "WARN"):
+                for query_type in self.poll_queries:
                     if self.runtime.closing:
                         raise asyncio.CancelledError
                     query = Query(

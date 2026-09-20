@@ -77,14 +77,28 @@ async def test_local_isolated_query_verified_and_pinned(
         await call_query(hass, entry, service)
 
 
-async def test_local_full_cycle_updates_entities(hass, local_radio):
+async def test_local_soc_temperature_cycle_updates_entities(hass, local_radio):
     entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
-    assert len(local_radio[0]) == 4
+    assert len(local_radio[0]) == 2
+    for bus, query_type in zip(local_radio[0], ("S1_INFO", "INFO"), strict=True):
+        assert bytes(bus.written) == query_frame(
+            Query("omit_empty_crc", "request", query_type=query_type)
+        )
+        assert members(bus).count("Connect") == 1
+        assert members(bus).count("Disconnect") == 1
+        assert members(bus).count("StopNotify") == 1
     assert entry.runtime_data.coordinator.status == "ok"
     assert hass.states.get("sensor.aiper_ble_temperature").state == "21.5"
     assert hass.states.get("sensor.aiper_ble_battery").state == "73"
+    assert "wifi_rssi_raw" not in entry.runtime_data.coordinator.data
+    assert "warning_code_raw" not in entry.runtime_data.coordinator.data
+    assert hass.states.get("sensor.aiper_ble_warning_code_raw").state == "unavailable"
+    assert hass.states.get("sensor.aiper_ble_polling_status").attributes[
+        "configured_queries"
+    ] == ["S1_INFO", "INFO"]
     diagnostics = await async_get_config_entry_diagnostics(hass, entry)
     assert diagnostics["polling"]["transport"] == "local_bluez"
+    assert diagnostics["polling"]["configured_queries"] == ["S1_INFO", "INFO"]
     assert diagnostics["polling"]["last_poll_details"]["transport"] == "local_bluez"
 
 
@@ -122,7 +136,6 @@ async def test_local_live_info_full_cycle_and_bounded_diagnostics(hass, local_ra
     local_radio[1].extend(
         [
             lambda bus: None,
-            lambda bus: None,
             lambda bus: setattr(
                 bus,
                 "response",
@@ -138,9 +151,7 @@ async def test_local_live_info_full_cycle_and_bounded_diagnostics(hass, local_ra
     queries = diagnostics["polling"]["last_poll_queries"]
     assert [item["query_type"] for item in queries] == [
         "S1_INFO",
-        "OpInfo",
         "INFO",
-        "WARN",
     ]
     assert all(item["phase"] == "verify_response" for item in queries)
     assert all(item["cleanup"] == "disconnected_confirmed" for item in queries)
@@ -154,7 +165,6 @@ async def test_local_shape_failure_is_protocol_error_then_recovers(hass, local_r
     local_radio[1].extend(
         [
             lambda bus: None,
-            lambda bus: None,
             lambda bus: setattr(
                 bus, "response", frame(response("INFO", {"ack": "+INFO:0,0\r\n"}))
             ),
@@ -164,7 +174,7 @@ async def test_local_shape_failure_is_protocol_error_then_recovers(hass, local_r
     coordinator = entry.runtime_data.coordinator
     assert coordinator.last_poll_details["error_category"] == "protocol"
     assert coordinator.last_poll_details["query_type"] == "INFO"
-    assert len(coordinator.last_poll_queries) == 3
+    assert len(coordinator.last_poll_queries) == 2
     assert coordinator.data is None
     assert coordinator.failures == 1
     assert coordinator.update_interval.total_seconds() == 600
@@ -175,9 +185,47 @@ async def test_local_shape_failure_is_protocol_error_then_recovers(hass, local_r
     assert coordinator.last_update_success
     assert coordinator.failures == 0
     assert coordinator.update_interval.total_seconds() == 300
-    assert len(coordinator.last_poll_queries) == 4
-    assert len(local_radio[0]) == 7
+    assert len(coordinator.last_poll_queries) == 2
+    assert len(local_radio[0]) == 4
     assert hass.states.get("sensor.aiper_ble_battery").state == "73"
+
+
+@pytest.mark.parametrize("failed_query", [0, 1])
+@pytest.mark.parametrize("failure", ["Connect", "StopNotify", "Disconnect"])
+async def test_minimal_local_cycle_failure_never_publishes_partial_values(
+    hass, local_radio, failed_query, failure
+):
+    local_radio[1].extend([lambda bus: None] * failed_query)
+    local_radio[1].append(lambda bus: setattr(bus, "failure", failure))
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    coordinator = entry.runtime_data.coordinator
+    assert len(local_radio[0]) == failed_query + 1
+    assert coordinator.data is None
+    assert not coordinator.last_update_success
+    assert hass.states.get("sensor.aiper_ble_battery").state == "unavailable"
+    assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
+    assert coordinator.suspended == (failure != "Connect")
+    assert (
+        coordinator.update_interval is None
+        if coordinator.suspended
+        else (coordinator.update_interval.total_seconds() == 600)
+    )
+
+
+async def test_minimal_local_poll_now_retains_cooldown(hass, local_radio):
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    coordinator = entry.runtime_data.coordinator
+    with pytest.raises(HomeAssistantError, match="cooldown"):
+        await coordinator.async_poll_now()
+    assert len(local_radio[0]) == 2
+    coordinator.last_attempt_finished -= 301
+    await coordinator.async_poll_now()
+    assert len(local_radio[0]) == 4
+    assert [item["query_type"] for item in coordinator.last_poll_queries] == [
+        "S1_INFO",
+        "INFO",
+    ]
+    assert coordinator.status == "ok"
 
 
 async def test_missing_local_adapter_no_bus_or_proxy(hass):
