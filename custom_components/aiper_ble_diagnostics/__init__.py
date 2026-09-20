@@ -70,7 +70,21 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                 )
             if runtime.coordinator is None:
                 raise ServiceValidationError("Polling coordinator is unavailable.")
-            result = await runtime.coordinator.async_poll_now()
+            try:
+                result = await runtime.coordinator.async_poll_now()
+            except UpdateFailed:
+                coordinator = runtime.coordinator
+                if call.return_response:
+                    return {
+                        "status": coordinator.status,
+                        "error_code": coordinator.error_code,
+                        "consecutive_failures": coordinator.failures,
+                        "details": dict(coordinator.last_poll_details),
+                    }
+                raise ServiceValidationError(
+                    f"Aiper BLE poll {coordinator.status}: {coordinator.error_code}. "
+                    "See integration diagnostics; do not bypass the cooldown."
+                ) from None
             return result if call.return_response else None
         query = (
             Query(

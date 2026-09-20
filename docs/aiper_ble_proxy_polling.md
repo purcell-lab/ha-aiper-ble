@@ -34,6 +34,47 @@ silently returning cached data. Failed manual attempts retain automatic
 backoff; uncertain cleanup still suspends polling. A successful call returns
 only `status` and `last_successful_poll` when a response is requested.
 
+## Version 0.8.1 failure reporting
+
+Repeated failed manual polls now refresh the polling-status entity, even when
+the previous attempt already failed. Telemetry remains unavailable after failure;
+no partial or stale readings are published as fresh.
+
+For callers requesting a response, an operational polling failure returns
+`status` (`failed` or `suspended`), `error_code`, `consecutive_failures`, and
+`details`, instead of leaking an `UpdateFailed` exception as a generic HTTP 500.
+The successful response is unchanged. REST clients must use
+`POST /api/services/aiper_ble_diagnostics/poll_now?return_response` and inspect
+`service_response.status`: HTTP 200 means the action returned a result, not that
+the robot answered successfully. Automations requesting a response must likewise
+check `status == "ok"` before acting on telemetry.
+
+Calls without a requested response raise an actionable service validation error
+on operational failure. HA's REST endpoint does not guarantee structured error
+responses in that mode; REST/MCP callers should request the response. Prerequisite
+and cooldown violations still raise validation errors, and cancellation still
+propagates. No new query, retry, scan, or guard bypass is introduced.
+
+Downloaded diagnostics include `polling.last_poll_details`, a cached summary of
+the latest attempted query only. Downloading it causes no Bluetooth activity.
+It contains the query type, transport, phase/failure stage, fixed error category,
+write-attempt and notification/byte counts, and cleanup results when available.
+The second query replaces the first summary if reached; a failure in the first
+query still prevents the second query.
+
+Stages distinguish route validation, connection, connected-route validation,
+endpoint validation, notification subscription, pre-write validation, writing,
+response waiting/decoding and CRC/value verification. Cleanup errors separately
+identify notification-stop or disconnect problems while retaining any earlier
+failure stage. Error categories are fixed labels (`timeout`, `bleak`, `connection`,
+`os`, `unexpected`, `protocol`, or `cancelled`), not exception messages. A category
+and stage narrow the investigation but do not establish the root cause.
+
+The summary excludes raw replies, exception text and class names, MAC addresses,
+robot names/serials, network names, proxy identifiers, and backend details.
+This release improves observability; it does not claim to fix an underlying
+Bluetooth connection failure.
+
 ## Version 0.7.0 scope
 
 Recurring telemetry now uses Home Assistant's Bluetooth integration and

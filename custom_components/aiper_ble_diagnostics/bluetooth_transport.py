@@ -8,6 +8,7 @@ metadata. Exclusive access remains an explicit operator prerequisite.
 import asyncio
 
 import bleak_retry_connector
+from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
 
@@ -37,6 +38,19 @@ SECURITY_FLAGS = {
     "encrypt-authenticated-read",
     "secure-read",
 }
+
+
+def error_category(error):
+    """Fixed categories only: backend exception strings can contain secrets."""
+    if isinstance(error, TimeoutError):
+        return "timeout"
+    if isinstance(error, BleakError):
+        return "bleak"
+    if isinstance(error, ConnectionError):
+        return "connection"
+    if isinstance(error, OSError):
+        return "os"
+    return "unexpected"
 
 
 def single_attempt_client_class():
@@ -143,7 +157,12 @@ async def query_once(hass, target, report, query):
     decoder = Decoder()
     overflow = False
     accepting = False
-    report.update(status="running", transport="ha_bluetooth", write_attempts=0)
+    report.update(
+        status="running",
+        transport="ha_bluetooth",
+        write_attempts=0,
+        phase="route_validation",
+    )
 
     def notified(_char, data):
         nonlocal overflow
@@ -160,6 +179,7 @@ async def query_once(hass, target, report, query):
 
     try:
         device = validate_routes(hass, target, query)
+        report["phase"] = "connect"
         async with asyncio.timeout(CONNECT_SECONDS):
             client = await establish_connection(
                 single_attempt_client_class(),
@@ -171,16 +191,21 @@ async def query_once(hass, target, report, query):
                 use_services_cache=False,
             )
         async with asyncio.timeout(EXCHANGE_SECONDS):
+            report["phase"] = "connected_route_validation"
             validate_routes(hass, target, query, connected=True)
+            report["phase"] = "endpoint_validation"
             char = endpoint(client, query)
+            report["phase"] = "start_notify"
             notify_attempted = True
             await client.start_notify(char, notified)
+            report["phase"] = "prewrite_validation"
             validate_routes(hass, target, query, connected=True)
             if endpoint(client, query).handle != char.handle:
                 raise ProtocolError("notification_endpoint_changed")
             if not client.is_connected:
                 raise ProtocolError("disconnected_before_query")
             accepting = True
+            report["phase"] = "write"
             # Conservative ATT-minimum chunks work across proxy MTU variations.
             for chunk in chunks(query_frame(query)):
                 if overflow:
@@ -193,7 +218,9 @@ async def query_once(hass, target, report, query):
                     5,
                 )
             while True:
+                report["phase"] = "wait_response"
                 value = await queue.get()
+                report["phase"] = "decode"
                 if overflow:
                     raise ProtocolError("notification_queue_overflow")
                 if isinstance(value, ProtocolError):
@@ -205,9 +232,26 @@ async def query_once(hass, target, report, query):
                         )
                         return
     except ProtocolError as exc:
-        report.update(status="failed", error_code=str(exc))
-    except Exception:  # noqa: BLE001 - no backend identifiers in diagnostics
-        report.update(status="failed", error_code="bluetooth_transport_error")
+        report.update(
+            status="failed",
+            error_code=str(exc),
+            failure_stage=report["phase"],
+            error_category="protocol",
+        )
+    except asyncio.CancelledError:
+        report.update(
+            status="interrupted",
+            failure_stage=report["phase"],
+            error_category="cancelled",
+        )
+        raise
+    except Exception as exc:  # noqa: BLE001 - no backend identifiers in diagnostics
+        report.update(
+            status="failed",
+            error_code="bluetooth_transport_error",
+            failure_stage=report["phase"],
+            error_category=error_category(exc),
+        )
     finally:
         accepting = False
         cleanup_failed = False
@@ -216,16 +260,20 @@ async def query_once(hass, target, report, query):
                 try:
                     await asyncio.wait_for(client.stop_notify(char), 5)
                     report["notification_cleanup"] = "stop_confirmed"
-                except Exception:  # noqa: BLE001 - still disconnect
+                except Exception as exc:  # noqa: BLE001 - still disconnect
                     report["notification_cleanup"] = "stop_unconfirmed"
+                    report["notification_cleanup_error_category"] = error_category(exc)
+                    report.setdefault("failure_stage", "stop_notify")
                     cleanup_failed = True
             try:
                 await asyncio.wait_for(client.disconnect(), 10)
                 if client.is_connected:
                     raise ProtocolError("disconnect_unconfirmed")
                 report["cleanup"] = "disconnected_confirmed"
-            except Exception:  # noqa: BLE001 - suspend rather than retry
+            except Exception as exc:  # noqa: BLE001 - suspend rather than retry
                 report["cleanup"] = "disconnect_unconfirmed"
+                report["cleanup_error_category"] = error_category(exc)
+                report.setdefault("failure_stage", "disconnect")
                 cleanup_failed = True
         report["notification_count"] = decoder.notifications
         report["received_bytes"] = decoder.total_bytes
