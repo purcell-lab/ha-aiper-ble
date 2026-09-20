@@ -4,8 +4,13 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.4.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.5.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
+
+This release adds passive transport-stage diagnostics and retires 14 speculative
+OpInfo entities. It does not change transport selection, retry policy or polling
+options. See [transport diagnostics](docs/transport_diagnostics.md) and
+[entity retirement](docs/entity_retirement.md) before upgrading.
 
 The INFO parser now accepts the CRC-verified five-field reply observed on the
 test S1, as well as the app-derived three-field form. Only the documented first
