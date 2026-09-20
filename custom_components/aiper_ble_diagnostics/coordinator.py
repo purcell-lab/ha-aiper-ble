@@ -1,4 +1,4 @@
-"""Opt-in S1 polling using HA-managed Bluetooth connections and active proxies."""
+"""Opt-in S1 polling over an explicitly selected guarded Bluetooth transport."""
 
 import asyncio
 import json
@@ -14,6 +14,7 @@ from homeassistant.util import dt as dt_util
 from .bluetooth_transport import query_once
 from .const import DOMAIN
 from .datapoints import opinfo_values, timezone
+from .local_transport import query_once as local_query_once
 from .protocol import ProtocolError, Query, crc16, query_telemetry
 
 LOGGER = logging.getLogger(__name__)
@@ -103,6 +104,8 @@ class AiperCoordinator(DataUpdateCoordinator):
             interval = DEFAULT_INTERVAL
         self.interval = interval
         self.allow_missing = entry.options.get("allow_missing_advertisement") is True
+        self.use_local_adapter = entry.options.get("use_local_adapter") is True
+        self.transport = "local_bluez" if self.use_local_adapter else "ha_bluetooth"
         self.status = "waiting" if self.enabled else "disabled"
         self.error_code = None
         self.suspended = False
@@ -199,7 +202,8 @@ class AiperCoordinator(DataUpdateCoordinator):
         query = Query("omit_empty_crc", "request", self.allow_missing, query_type)
         try:
             async with asyncio.timeout(SINGLE_QUERY_SECONDS):
-                await query_once(self.hass, self.runtime.target, report, query)
+                execute = local_query_once if self.use_local_adapter else query_once
+                await execute(self.hass, self.runtime.target, report, query)
                 if asyncio.current_task().cancelling():
                     raise asyncio.CancelledError
                 if (
@@ -261,7 +265,7 @@ class AiperCoordinator(DataUpdateCoordinator):
             self.next_attempt = finished + self.interval
             # Only verified allowlisted scalars, never raw frames or identifiers.
             self.runtime.last_result = {
-                "mode": "isolated_ha_bluetooth_query",
+                "mode": f"isolated_{self.transport}_query",
                 "started_utc": started,
                 "finished_utc": dt_util.utcnow().isoformat(),
                 **{key: report[key] for key in POLL_DETAIL_FIELDS if key in report},
@@ -292,8 +296,8 @@ class AiperCoordinator(DataUpdateCoordinator):
         report = {}
         try:
             values = {}
-            # One connection per fixed request. HA chooses an available local
-            # adapter or active proxy; requests are never replayed.
+            # One connection per fixed request. Local mode pins the saved BlueZ
+            # adapter; HA mode selects a route. Never retry or change transport.
             async with asyncio.timeout(POLL_SECONDS):
                 for query_type in ("S1_INFO", "OpInfo", "INFO", "WARN"):
                     if self.runtime.closing:
@@ -302,7 +306,8 @@ class AiperCoordinator(DataUpdateCoordinator):
                         "omit_empty_crc", "request", self.allow_missing, query_type
                     )
                     report = {"query_type": query_type}
-                    await query_once(self.hass, self.runtime.target, report, query)
+                    execute = local_query_once if self.use_local_adapter else query_once
+                    await execute(self.hass, self.runtime.target, report, query)
                     if report.get("status") == "cleanup_requires_review":
                         self.suspended = True
                     # The diagnostic probe records cancellation after cleanup.

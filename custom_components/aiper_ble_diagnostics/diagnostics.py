@@ -21,7 +21,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                 "interval_seconds": runtime.coordinator.interval,
                 "consecutive_failures": runtime.coordinator.failures,
                 "allow_missing_advertisement": runtime.coordinator.allow_missing,
-                "transport": "ha_bluetooth",
+                "transport": runtime.coordinator.transport,
                 "last_poll_details": dict(runtime.coordinator.last_poll_details),
                 "field_evidence": {
                     "current": runtime.coordinator.last_update_success,
@@ -33,7 +33,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                     ),
                 },
             },
-            "scope": "HA Bluetooth/proxy polling; legacy diagnostics local only; no control",
+            "scope": "Selected local BlueZ or HA Bluetooth transport; no control",
         },
         REDACT_KEYS,
     )

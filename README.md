@@ -4,8 +4,24 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.1.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.2.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
+
+### Local transport rollback
+
+Enable **Use saved local adapter directly (no proxies or Bleak)** in integration
+options to restore the original direct-BlueZ connection path. This requires an
+entry with saved local adapter metadata and applies to polling and all four
+isolated query actions. It never falls back to a proxy. The existing HA/Bleak path
+remains available when this option is off; existing entries are not silently
+changed. Both paths retain the coordinator's CRC verification, shared cooldown,
+exclusive-operation guard, cleanup checks and atomic sensor publication.
+
+At 12:49 AEST on 20 September 2026, a single direct-BlueZ OpInfo query completed
+in 5.26 seconds after the HA/proxy path had timed out at connection establishment.
+This changes both radio selection and connection implementation, so it narrows
+the issue to the connection path but does not isolate Bleak versus ESPHome.
+See [the rollback record](docs/local_transport_rollback.md).
 
 ## What it does
 
