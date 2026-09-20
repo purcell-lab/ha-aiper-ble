@@ -22,6 +22,13 @@ from .test_polling import OPTIONS, PATH, response, setup
 from .test_protocol import frame
 from .test_query import Bus, members
 
+DEVICE = "org.bluez.Device1"
+
+
+def with_rssi(value):
+    """Set the pinned adapter's cached signal level on one fake connection."""
+    return lambda bus: bus.data[TARGET.device_path][DEVICE].update(RSSI=value)
+
 
 @pytest.fixture
 def local_radio():
@@ -55,7 +62,8 @@ async def test_local_isolated_query_verified_and_pinned(
     diagnostic = result["transport_diagnostics"]
     assert diagnostic["backend"] == "local_bluez"
     assert diagnostic["selected_route"] is None
-    assert diagnostic["route_snapshots"] == {}
+    # Passive HA cache read only; no scanner exists in the offline harness.
+    assert diagnostic["route_snapshots"] == {"local_preflight": {"available": False}}
     assert diagnostic["phase_ms"]["local_probe_including_cleanup"] >= 0
     assert result["mode"] == "isolated_local_bluez_query"
     assert result["status"] == "query_complete"
@@ -209,6 +217,90 @@ async def test_minimal_local_cycle_failure_never_publishes_partial_values(
         coordinator.update_interval is None
         if coordinator.suspended
         else (coordinator.update_interval.total_seconds() == 600)
+    )
+
+
+async def test_local_cycle_records_bounded_connect_observations(hass, local_radio):
+    """Publish enough per-connect context to test the reconnect-timing theory."""
+    local_radio[1].extend([with_rssi(-76), with_rssi(-80)])
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.status == "ok"
+    first, second = coordinator.last_poll_queries
+    assert (first["query_type"], first["cycle_query_index"]) == ("S1_INFO", 1)
+    assert (second["query_type"], second["cycle_query_index"]) == ("INFO", 2)
+    # The first connect of a cycle has no preceding query to measure against.
+    assert "seconds_since_previous_query" not in first
+    assert second["seconds_since_previous_query"] >= 0
+    assert first["preconnect_rssi_dbm"] == -76
+    assert second["preconnect_rssi_dbm"] == -80
+    assert first["connect_ms"] >= 0
+    assert second["connect_ms"] >= 0
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert diagnostics["polling"]["last_poll_queries"] == coordinator.last_poll_queries
+    assert "PRIVATE_SERIAL" not in json.dumps(diagnostics["polling"])
+
+
+@pytest.mark.parametrize("value", [-127, 20, -128, 21, True, -76.0, "-76", None])
+async def test_preconnect_signal_level_is_bounded_or_absent(hass, local_radio, value):
+    """BlueZ drops RSSI when the robot is no longer seen; record that as None."""
+    local_radio[1].append(with_rssi(value))
+    entry = await setup(hass, {"use_local_adapter": True})
+    result = await call_query(hass, entry)
+    expected = value if type(value) is int and -127 <= value <= 20 else None
+    assert result["preconnect_rssi_dbm"] == expected
+
+
+async def test_failed_connect_still_records_its_elapsed_time(hass, local_radio):
+    local_radio[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+    entry = await setup(hass, {"use_local_adapter": True})
+    result = await call_query(hass, entry)
+    assert result["failure_stage"] == "connect"
+    assert result["write_attempts"] == 0
+    # A refused connect is exactly the case the elapsed time has to distinguish.
+    assert result["connect_ms"] >= 0
+
+
+async def test_last_successful_poll_stays_visible_while_polling_fails(
+    hass, local_radio
+):
+    """Staleness evidence must survive the failure that makes it matter."""
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    coordinator = entry.runtime_data.coordinator
+    published = coordinator.data["last_success"]
+    assert hass.states.get("sensor.aiper_ble_battery").state == "73"
+    local_radio[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+    coordinator.next_attempt = 0
+    await coordinator.async_refresh()
+    assert not coordinator.last_update_success
+    assert not coordinator.suspended
+    assert coordinator.status == "failed"
+    # Measured values still disappear; only the timestamp is retained.
+    assert hass.states.get("sensor.aiper_ble_battery").state == "unavailable"
+    assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
+    # HA publishes timestamp states to the second.
+    assert (
+        hass.states.get("sensor.aiper_ble_last_successful_poll").state
+        == published.replace(microsecond=0).isoformat()
+    )
+    assert coordinator.data["last_success"] == published
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    # Diagnostics keep saying the telemetry is not current.
+    assert diagnostics["polling"]["field_evidence"]["current"] is False
+    assert diagnostics["polling"]["status"] == "failed"
+
+
+async def test_last_successful_poll_hidden_once_polling_is_disabled(hass, local_radio):
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    coordinator = entry.runtime_data.coordinator
+    assert (
+        hass.states.get("sensor.aiper_ble_last_successful_poll").state != "unavailable"
+    )
+    coordinator.enabled = False
+    coordinator.async_update_listeners()
+    await hass.async_block_till_done()
+    assert (
+        hass.states.get("sensor.aiper_ble_last_successful_poll").state == "unavailable"
     )
 
 

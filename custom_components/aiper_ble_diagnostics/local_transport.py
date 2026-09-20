@@ -15,6 +15,11 @@ async def query_once(hass, target, report, query):
     )
     diagnostics = TransportDiagnostics(report, "local_bluez")
     diagnostics.phase("local_probe_including_cleanup")
+    # Cached advertisement age is unavailable over BlueZ's device interface, so
+    # read HA's existing per-scanner cache. This is a passive read of already
+    # collected metadata: it starts no scan, opens no connection and never
+    # participates in transport selection, which stays pinned to the saved radio.
+    diagnostics.snapshot(hass, target.address, "local_preflight")
     if target.adapter_path is None or target.adapter_address is None:
         report.update(
             status="failed",

@@ -57,7 +57,12 @@ class TelemetrySensor(CoordinatorEntity, SensorEntity):
         return (
             self.coordinator.enabled
             and not self.coordinator.runtime.closing
-            and super().available
+            # Measured values disappear as soon as a cycle fails, so no stale
+            # reading is ever presented as current. The last-successful-poll
+            # timestamp is staleness evidence rather than a measurement, and is
+            # most needed while polling is failing, so it stays visible on the
+            # retained value until polling is disabled or the entry unloads.
+            and (self.key == "last_success" or super().available)
             and self.coordinator.data is not None
             and self.coordinator.data.get(self.key) is not None
         )
