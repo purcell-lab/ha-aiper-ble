@@ -95,6 +95,50 @@ async def test_unknown_and_other_device_lines_are_discarded(response):
     assert "PRIVATE" not in json.dumps(capture.data)
 
 
+@pytest.mark.parametrize("level", ["D", "I", "W", "E", "C", "V", "VV"])
+async def test_firmware_thread_header_is_accepted_but_not_retained(level):
+    capture = trace.EventCapture(TARGET.address)
+    raw = (
+        f"\x1b[0;36m[{level}][esp32_ble_client:256]"
+        "\x1b[1;31m[PRIVATE_TASK]\x1b[0;36m: "
+        f"[0] [{TARGET.address}] ESP_GATTC_CONNECT_EVT\x1b[0m"
+    )
+    capture.receive(SimpleNamespace(message=raw.encode()))
+    assert capture.data["events"][0]["stage"] == "CONNECT"
+    assert capture.data["format_counts"]["target_header"] == 1
+    assert "PRIVATE" not in json.dumps(capture.data)
+    assert TARGET.address not in json.dumps(capture.data)
+
+
+async def test_format_counters_are_fixed_vocabulary_only():
+    capture = trace.EventCapture(TARGET.address)
+    capture.receive(log("unknown PRIVATE_SECRET"))
+    capture.receive(log("Connection open", address=SOURCE))
+    capture.receive(SimpleNamespace(message=b"[D][wifi:123]: PRIVATE_SSID"))
+    capture.receive(SimpleNamespace(message=b"[D][esp32_ble_client:1] BAD_PRIVATE"))
+    capture.receive(SimpleNamespace(message=b"x" * 3000))
+    assert capture.data["format_counts"] == {
+        "oversized": 1,
+        "header_unmatched": 2,
+        "ble_tag_header_unmatched": 1,
+        "other_device": 1,
+        "target_header": 1,
+        "target_message_unmatched": 1,
+    }
+    assert "PRIVATE" not in json.dumps(capture.data)
+
+
+@pytest.mark.parametrize(
+    "thread", ["x" * 33, "bad\nthread", "bad\x00thread", "bad]thread"]
+)
+async def test_invalid_thread_header_is_rejected(thread):
+    capture = trace.EventCapture(TARGET.address)
+    raw = f"[D][esp32_ble_client:123][{thread}]: [0] [{TARGET.address}] Connection open"
+    capture.receive(SimpleNamespace(message=raw.encode()))
+    assert not capture.data["events"]
+    assert capture.data["format_counts"]["ble_tag_header_unmatched"] == 1
+
+
 @pytest.mark.parametrize("cap", ["MAX_EVENTS", "MAX_LINES", "MAX_BYTES"])
 async def test_capture_is_bounded(cap):
     capture = trace.EventCapture(TARGET.address)
