@@ -237,20 +237,20 @@ async def test_migration_preserves_ids_history_and_user_choices(hass):
         records["wifi_name"].entity_id, name="My Wi-Fi diagnostic"
     )
     registry.async_update_entity(
-        records["opinfo_status_raw"].entity_id,
+        records["s1_timezone"].entity_id,
         disabled_by=er.RegistryEntryDisabler.USER,
     )
     registry.async_update_entity(
-        records["opinfo_link_raw"].entity_id, hidden_by=er.RegistryEntryHider.USER
+        records["wifi_rssi_raw"].entity_id, hidden_by=er.RegistryEntryHider.USER
     )
     before = {(item.entity_id, item.unique_id) for item in records.values()}
     assert await async_migrate_entry(hass, entry)
-    assert entry.minor_version == 2
+    assert entry.minor_version == 3
     assert before == {
         (item.entity_id, item.unique_id)
         for item in er.async_entries_for_config_entry(registry, entry.entry_id)
     }
-    candidate_id = records["opinfo_bat_raw"].entity_id
+    candidate_id = records["temperature_raw"].entity_id
     assert (
         registry.async_get(candidate_id).hidden_by == er.RegistryEntryHider.INTEGRATION
     )
@@ -258,11 +258,11 @@ async def test_migration_preserves_ids_history_and_user_choices(hass):
     assert registry.async_get(records["wifi_name"].entity_id).hidden_by is None
     assert registry.async_get(records["temperature"].entity_id).hidden_by is None
     assert (
-        registry.async_get(records["opinfo_status_raw"].entity_id).disabled_by
+        registry.async_get(records["s1_timezone"].entity_id).disabled_by
         == er.RegistryEntryDisabler.USER
     )
     assert (
-        registry.async_get(records["opinfo_link_raw"].entity_id).hidden_by
+        registry.async_get(records["wifi_rssi_raw"].entity_id).hidden_by
         == er.RegistryEntryHider.USER
     )
     registry.async_update_entity(candidate_id, hidden_by=None)

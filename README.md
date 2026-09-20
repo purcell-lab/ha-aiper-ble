@@ -37,9 +37,9 @@ See [the rollback record](docs/local_transport_rollback.md).
 - Groups entities under one **Aiper Surfer S1 (BLE)** device, with nine enabled
   by default: temperature, battery, raw operating status/mode, raw warning code, raw solar status,
   last successful poll, polling status and manual discovery result.
-- Keeps 18 optional/raw diagnostics disabled by default on new installations.
-  Missing fields remain unavailable; speculative OpInfo/Machine fields are not
-  presented as confirmed capabilities.
+- Keeps four optional diagnostics disabled by default: raw temperature, time
+  zone, Wi-Fi RSSI and network name. Retires 14 speculative OpInfo/Machine
+  entities that were not returned by the S1.
 - Provides a guarded `aiper_ble_diagnostics.poll_now` action.
 - Provides independent `query_s1_info`, `query_opinfo`, `query_info` and
   `query_warn` actions for [guarded bisection](docs/isolated_query_bisection.md)
@@ -101,8 +101,8 @@ HACS validation and a default-directory submission have not been completed.
 
 Do not remove and re-add the integration. Keep the existing domain, config entry,
 options and entity registry. Install this repository's component over the same
-directory and restart once after reviewing the update. Entity unique IDs and
-default IDs are retained, and user-renamed IDs take precedence.
+directory and restart once after reviewing the update. Retained entity unique
+IDs and default IDs are unchanged, and user-renamed IDs take precedence.
 
 Version 0.9.0 adds `AT+INFO?` and `AT+WARN?` to enabled polling, including the first poll after
 restart. Review this expanded query scope before deployment. A once-only registry
@@ -110,6 +110,13 @@ migration hides previously enabled optional diagnostics without disabling them,
 deleting their IDs or changing history. User-hidden, user-disabled and custom-named
 entities are left alone. Unhide any retained diagnostic in entity settings after
 migration if needed; later reloads do not re-hide it.
+
+Config-entry minor version 3 removes exactly 14 retired speculative sensor
+registry entries, including renamed or disabled copies, and stops creating them.
+It leaves 13 entities: nine enabled by default and four optional diagnostics.
+Review references before deploying this breaking entity cleanup; see the
+[retirement list and migration guide](docs/entity_retirement.md).
+No recorder-history purge, device removal or transport change is performed.
 
 Only one update mechanism should own the component directory. Before switching
 from a configuration-repository deployment to HACS, stop that deployment from

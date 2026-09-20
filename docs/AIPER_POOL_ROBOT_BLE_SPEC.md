@@ -240,7 +240,7 @@ still cause a CCCD write by the Bluetooth stack.
 
 The component defines 24 telemetry sensors and three integration-status sensors.
 On new installations, six telemetry sensors and all three status sensors are
-enabled by default. The remaining 18 diagnostics are disabled by default.
+enabled by default. The remaining four diagnostics are disabled by default.
 Optional fields are unavailable when absent or invalid; they are not
 filled with zero, inferred from another query or dynamically generated from
 arbitrary response keys.
@@ -257,28 +257,16 @@ arbitrary response keys.
 | S1 reply `timeZone` | Time zone | Observed; bounded metadata string |
 | OpInfo `wifi_rssi` | Wi-Fi RSSI raw | Observed `-127`; sentinel meaning unverified |
 | OpInfo `wifi_name` | Wi-Fi network | App-derived optional field; not present in observed reply |
-| OpInfo `bat` | Battery raw | Optional candidate, not verified SOC |
-| OpInfo `status` | Status raw | Optional candidate, enum unverified |
-| OpInfo `link` | Link raw | Optional candidate, enum unverified |
-| OpInfo `Machine.cap` | Battery capacity raw | Optional nested candidate; not observed or verified SOC |
-| OpInfo `Machine.mode` | Mode raw | Optional nested candidate |
-| OpInfo `Machine.solar_status` | Solar status raw | Optional nested candidate |
-| OpInfo `Machine.status` | Status raw | Optional nested candidate |
-| OpInfo `Machine.temp` | Temperature raw | Optional nested candidate; no assumed scale |
-| OpInfo `Machine.warn` | Warning raw | Optional nested candidate |
-| OpInfo `Machine.warn_code` | Warning code raw | Optional nested candidate |
-| OpInfo `Machine.in_water` | In-water raw | Optional nested candidate; no assumed boolean mapping |
-| OpInfo `Machine.link` | Link raw | Optional nested candidate |
-| OpInfo `Machine.light` | Light raw | Optional nested candidate |
-| OpInfo `Machine.visual` | Visual raw | Optional nested candidate |
+| OpInfo `bat/status/link` and 11 nested `Machine` candidates | No entities | Speculative, absent from observed S1 reply; retired rather than presented as supported sensors |
 
 The other three sensors show last successful poll, polling status and the manual
-diagnostic result. All 27 entities are grouped under one integration-scoped HA
+diagnostic result. All 13 retained entities are grouped under one integration-scoped HA
 device, without automatically merging into a cloud integration's device.
-Existing entity unique IDs remain unchanged. A once-only migration hides
-uncustomised existing optional diagnostics, but does not disable them, delete
-registry records or discard history. User hiding/disabling and custom names are
-preserved. Users may unhide them after migration; reloads respect that choice.
+Retained entity unique IDs remain unchanged. Config-entry minor version 3
+removes exactly the 14 retired registry entries, including renamed and disabled
+copies; retained records preserve user choices. No recorder purge is invoked.
+See [the retirement guide](entity_retirement.md) before deployment. The older
+presentation migration only hides eligible retained optional diagnostics once.
 
 Integer candidates accept signed 32-bit integers, except `warn_code` and WARN, which
 accepts signed 64-bit. Booleans, numeric strings and floats are not accepted as
