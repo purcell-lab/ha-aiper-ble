@@ -29,6 +29,7 @@ def test_service_descriptions_and_translation_match():
             "query_s1_info",
             "query_opinfo",
             "query_opinfo_local_bleak",
+            "query_opinfo_proxy_trace",
             "query_info",
             "query_warn",
             "poll_now",

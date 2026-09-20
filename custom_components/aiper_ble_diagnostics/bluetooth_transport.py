@@ -160,7 +160,9 @@ def endpoint(client, query):
     return char
 
 
-async def query_once(hass, target, report, query, *, pin_local=False):
+async def query_once(
+    hass, target, report, query, *, pin_local=False, proxy_source=None, proxy_guard=None
+):
     """Connect, issue one fixed request, stop notifications, disconnect.
 
     Publication is the coordinator's responsibility after CRC and cleanup checks.
@@ -225,6 +227,16 @@ async def query_once(hass, target, report, query, *, pin_local=False):
             client_class = pinned_client_class(
                 client_class, target, diagnostics, versions
             )
+        if proxy_source is not None:
+            from .proxy_trace import assert_proxy_backend
+            from .proxy_trace import pinned_client_class as proxy_client_class
+
+            client_class = proxy_client_class(
+                client_class, target, proxy_source, diagnostics
+            )
+            if proxy_guard is None:
+                raise ProtocolError("proxy_trace_guard_required")
+            proxy_guard()
         phase("connect")
         async with asyncio.timeout(CONNECT_SECONDS) as connect_timeout:
             client = await establish_connection(
@@ -243,6 +255,9 @@ async def query_once(hass, target, report, query, *, pin_local=False):
             validate_routes(hass, target, query, connected=True)
             if pin_local:
                 assert_local_backend(client, target)
+            if proxy_source is not None:
+                proxy_guard()
+                assert_proxy_backend(client, target, proxy_source)
             phase("endpoint_validation")
             char = endpoint(client, query)
             phase("start_notify")
@@ -252,6 +267,9 @@ async def query_once(hass, target, report, query, *, pin_local=False):
             validate_routes(hass, target, query, connected=True)
             if pin_local:
                 assert_local_backend(client, target)
+            if proxy_source is not None:
+                proxy_guard()
+                assert_proxy_backend(client, target, proxy_source)
             if endpoint(client, query).handle != char.handle:
                 raise ProtocolError("notification_endpoint_changed")
             if not client.is_connected:

@@ -4,10 +4,14 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.6.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.7.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
 
-This release adds an explicit, version-gated same-local-radio diagnostic action.
+This diagnostic-only change adds an opt-in
+[native ESPHome proxy trace](docs/native_proxy_trace.md). It is not live-validated
+and does not change production polling or enable proxy fallback.
+
+Version 0.9.6 added an explicit, version-gated same-local-radio diagnostic action.
 It does not change production transport selection, retry policy or polling
 options. It retains v0.9.5's passive transport diagnostics and retirement of
 14 speculative OpInfo entities. See

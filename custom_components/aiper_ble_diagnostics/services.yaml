@@ -108,6 +108,38 @@ query_opinfo_local_bleak:
       default: false
       selector:
         boolean:
+query_opinfo_proxy_trace:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: aiper_ble_diagnostics
+    proxy_entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: esphome
+    confirm_app_closed:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_query_write:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_notifications:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_proxy_logging:
+      required: true
+      default: false
+      selector:
+        boolean:
 poll_now:
   fields:
     entry_id:
