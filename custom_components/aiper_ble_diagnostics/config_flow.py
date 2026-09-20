@@ -82,7 +82,12 @@ class OptionsFlow(config_entries.OptionsFlow):
     async def async_step_init(self, user_input=None):
         errors = {}
         if user_input is not None:
-            if (
+            if user_input.get("use_local_adapter") and not (
+                self.config_entry.data.get("adapter_path")
+                and self.config_entry.data.get("adapter_address")
+            ):
+                errors["base"] = "local_adapter_required"
+            elif (
                 user_input["polling_enabled"]
                 and not user_input["confirm_exclusive_access"]
             ):
@@ -110,6 +115,10 @@ class OptionsFlow(config_entries.OptionsFlow):
                     vol.Required(
                         "allow_missing_advertisement",
                         default=current.get("allow_missing_advertisement", False),
+                    ): bool,
+                    vol.Optional(
+                        "use_local_adapter",
+                        default=current.get("use_local_adapter", False),
                     ): bool,
                 }
             ),

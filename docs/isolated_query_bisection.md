@@ -1,8 +1,11 @@
 # Isolated HA Bluetooth query bisection
 
-The four independent actions below use the same `bluetooth_transport.query_once`
-and CRC/scalar verification as recurring polling, including HA-selected active
-proxies. They are not aliases for the legacy local-BlueZ `query_once` action.
+The four independent actions below use the same selected transport and
+CRC/scalar verification as recurring polling. From v0.9.2, the
+`use_local_adapter` option selects pinned direct BlueZ instead of HA/Bleak
+routing. Local mode never falls back to an active proxy. These actions are not
+aliases for the legacy `query_once` action: coordinator verification and cooldown
+still apply.
 
 | Action in `aiper_ble_diagnostics` | Fixed request | Useful returned values |
 | --- | --- | --- |
