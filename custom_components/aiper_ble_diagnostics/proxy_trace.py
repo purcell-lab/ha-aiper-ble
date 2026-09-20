@@ -32,7 +32,8 @@ MAX_LINE_BYTES = 2048
 ANSI = re.compile(r"\x1b\[[0-9;]*m")
 HEADER = re.compile(
     r"^(?:\[\d{2}:\d{2}:\d{2}\])?"
-    r"\[[EWIDV]\]\[esp32_ble_client:\d+\]: "
+    r"\[(?:[EWICDV]|VV)\]\[esp32_ble_client:\d+\]"
+    r"(?:\[[^\[\]\r\n\x00-\x1f]{1,32}\])?: "
     r"\[\d+\] \[([0-9A-Fa-f:]{17})\] (.*)$"
 )
 # Exact, source-reviewed messages. No free text, addresses or payloads survive.
@@ -83,6 +84,14 @@ class EventCapture:
             "bytes_seen": 0,
             "capture_limit_reached": False,
             "coverage": "inconclusive_if_events_missing",
+            "format_counts": {
+                "oversized": 0,
+                "header_unmatched": 0,
+                "ble_tag_header_unmatched": 0,
+                "other_device": 0,
+                "target_header": 0,
+                "target_message_unmatched": 0,
+            },
         }
 
     def receive(self, response):
@@ -100,11 +109,20 @@ class EventCapture:
             self.accepting = False
             return
         if len(raw) > MAX_LINE_BYTES:
+            self.data["format_counts"]["oversized"] += 1
             return
         text = ANSI.sub("", raw.decode("utf-8", errors="replace")).rstrip("\r\n")
         match = HEADER.fullmatch(text)
-        if match is None or match[1].upper() != self.address:
+        counts = self.data["format_counts"]
+        if match is None:
+            counts["header_unmatched"] += 1
+            if "[esp32_ble_client:" in text:
+                counts["ble_tag_header_unmatched"] += 1
             return
+        if match[1].upper() != self.address:
+            counts["other_device"] += 1
+            return
+        counts["target_header"] += 1
         for pattern, event, fields in EVENTS:
             parsed = re.fullmatch(pattern, match[2])
             if parsed is None:
@@ -124,6 +142,7 @@ class EventCapture:
                 )
             self.data["events"].append(item)
             return
+        counts["target_message_unmatched"] += 1
 
 
 def resolve_proxy(hass, entry_id):

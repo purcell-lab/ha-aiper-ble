@@ -73,6 +73,18 @@ disconnect and selected error codes
 Unknown formats and messages from other devices are dropped. Slot snapshots
 remain HA-side metadata, not native slot events.
 
+The formatter also accepts the optional task-name bracket emitted by the
+[2026.9.0 logger](https://github.com/esphome/esphome/blob/2026.9.0/esphome/components/logger/log_buffer.h).
+Task names are never retained. Fixed counters distinguish oversized lines,
+unmatched headers (including a separate BLE-tag count), other-device messages,
+target headers, and unmatched target messages. They retain no raw text.
+
+The first v0.9.7 live run received 14 native log messages but matched zero
+events. It timed out during connection with no query writes; BLE and dedicated
+API cleanup were confirmed. This does not establish where the MCU connection
+failed. v0.9.8 adds the documented header variation and counters for a repeat
+bounded investigation, not a transport or firmware fix.
+
 ## Interpretation limits
 
 - Times are HA receipt UTC and monotonic offsets, not MCU event timestamps.
