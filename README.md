@@ -4,12 +4,15 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.5.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.6.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
 
-This release adds passive transport-stage diagnostics and retires 14 speculative
-OpInfo entities. It does not change transport selection, retry policy or polling
-options. See [transport diagnostics](docs/transport_diagnostics.md) and
+This release adds an explicit, version-gated same-local-radio diagnostic action.
+It does not change production transport selection, retry policy or polling
+options. It retains v0.9.5's passive transport diagnostics and retirement of
+14 speculative OpInfo entities. See
+[same-radio diagnostics](docs/same_radio_diagnostic.md),
+[transport diagnostics](docs/transport_diagnostics.md) and
 [entity retirement](docs/entity_retirement.md) before upgrading.
 
 The INFO parser now accepts the CRC-verified five-field reply observed on the
@@ -35,6 +38,11 @@ the issue to the connection path but does not isolate Bleak versus ESPHome.
 See [the rollback record](docs/local_transport_rollback.md).
 
 ## What it does
+
+For issue #7, an explicit
+[same-local-radio diagnostic](docs/same_radio_diagnostic.md) compares direct
+BlueZ with HA-managed local Bleak without
+disabling proxies or changing the production polling transport.
 
 - Polls fixed `S1_INFO`, `OpInfo`, `INFO` and `WARN` status requests using the
   selected local BlueZ or HA Bluetooth transport. All four have live response
