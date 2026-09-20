@@ -4,8 +4,12 @@ Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.2.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.9.3.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
+
+Rejected INFO responses now expose bounded numeric-only format evidence in
+diagnostics after a successful response CRC/result check. No raw response,
+serial number, arbitrary text or unverified sensor reading is published.
 
 ### Local transport rollback
 

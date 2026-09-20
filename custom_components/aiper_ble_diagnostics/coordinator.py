@@ -31,6 +31,7 @@ ISOLATED_QUERIES = {
 }
 POLL_DETAIL_FIELDS = (
     "query_type",
+    "response_evidence",
     "transport",
     "status",
     "phase",
