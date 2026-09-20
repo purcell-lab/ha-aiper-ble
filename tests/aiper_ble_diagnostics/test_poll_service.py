@@ -39,13 +39,13 @@ async def test_poll_now_publishes_and_can_shorten_failure_backoff(hass, transpor
     result = await call_poll(hass, entry)
     assert result["status"] == "ok"
     assert "last_successful_poll" in result
-    assert len(transport[0]) == 4
+    assert len(transport[0]) == 8
     assert coordinator.next_attempt > asyncio.get_running_loop().time()
     assert coordinator.update_interval.total_seconds() == 300
     assert hass.states.get("sensor.aiper_ble_temperature").state == "21.5"
     expire_cooldown(coordinator)
     assert await call_poll(hass, entry, response=False) is None
-    assert len(transport[0]) == 6
+    assert len(transport[0]) == 12
 
 
 @pytest.mark.parametrize("gate", ["confirmation", "cooldown", "disabled", "suspended"])
@@ -61,7 +61,7 @@ async def test_poll_now_cannot_bypass_gates(hass, transport, gate):
     before = coordinator.next_attempt
     with pytest.raises(HomeAssistantError):
         await call_poll(hass, entry, confirm=gate != "confirmation")
-    assert len(transport[0]) == 2
+    assert len(transport[0]) == 4
     assert coordinator.next_attempt == before
 
 
@@ -76,14 +76,14 @@ async def test_poll_now_failure_invalidates_sensors_and_preserves_backoff(
     assert result["status"] == "failed"
     assert result["consecutive_failures"] == 1
     assert "error_code" in result
-    assert len(transport[0]) == 3
+    assert len(transport[0]) == 5
     assert coordinator.failures == 1
     assert coordinator.update_interval.total_seconds() == 600
     assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
     assert hass.states.get("sensor.aiper_ble_polling_status").state == "failed"
     with pytest.raises(HomeAssistantError, match="cooldown"):
         await call_poll(hass, entry)
-    assert len(transport[0]) == 3
+    assert len(transport[0]) == 5
 
 
 async def test_poll_now_cleanup_failure_suspends_and_cannot_be_forced(hass, transport):
@@ -96,7 +96,7 @@ async def test_poll_now_cleanup_failure_suspends_and_cannot_be_forced(hass, tran
     expire_cooldown(coordinator)
     with pytest.raises(HomeAssistantError, match="suspended"):
         await call_poll(hass, entry)
-    assert len(transport[0]) == 3
+    assert len(transport[0]) == 5
 
 
 async def test_repeated_manual_failure_publishes_count_and_recovers(hass, transport):
@@ -130,7 +130,7 @@ async def test_failure_without_response_is_actionable_service_error(hass, transp
     transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
     with pytest.raises(ServiceValidationError, match="See integration diagnostics"):
         await call_poll(hass, entry, response=False)
-    assert len(transport[0]) == 3
+    assert len(transport[0]) == 5
     assert coordinator.failures == 1
 
 
@@ -194,7 +194,7 @@ async def test_poll_now_mutex_and_unload_cancellation(hass, transport):
         # An automatic coordinator tick must not start a competing query.
         coordinator.next_attempt = 0
         await coordinator.async_refresh()
-        assert len(transport[0]) == 2
+        assert len(transport[0]) == 4
         assert await hass.config_entries.async_unload(entry.entry_id)
         with pytest.raises((HomeAssistantError, asyncio.CancelledError)):
             await running
@@ -235,7 +235,7 @@ async def test_one_device_all_entities_stable_after_reload(hass, transport):
     assert device.name == "Aiper Surfer S1 (BLE)"
     assert not device.connections  # No speculative merge with the cloud integration.
     records = er.async_entries_for_config_entry(entities, entry.entry_id)
-    assert len(records) == 23
+    assert len(records) == 27
     assert {r.device_id for r in records} == {device.id}
     before = {(r.entity_id, r.unique_id) for r in records}
     assert "sensor.aiper_ble_temperature" in {r.entity_id for r in records}
@@ -258,4 +258,4 @@ async def test_one_device_all_entities_stable_after_reload(hass, transport):
     await hass.async_block_till_done()
     assert hass.states.get("sensor.pool_robot_temperature").state == "21.5"
     assert entities.async_get("sensor.aiper_ble_temperature") is None
-    assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 23
+    assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 27

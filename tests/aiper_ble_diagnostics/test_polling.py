@@ -48,6 +48,8 @@ OPTIONS = {
 }
 S1 = Query("omit_empty_crc", "request", query_type="S1_INFO")
 OP = Query("omit_empty_crc", "request")
+INFO = Query("omit_empty_crc", "request", query_type="INFO")
+WARN = Query("omit_empty_crc", "request", query_type="WARN")
 
 
 def response(query_type="S1_INFO", data=None):
@@ -55,10 +57,14 @@ def response(query_type="S1_INFO", data=None):
         data = (
             {"sn": "PRIVATE_SERIAL", "timeZone": "UTC+10", "ack": "+S1_INFO:215,0\r\n"}
             if query_type == "S1_INFO"
+            else {"ack": "+INFO:2,1,73\r\n"}
+            if query_type == "INFO"
+            else {"ack": "+WARN:0\r\n"}
+            if query_type == "WARN"
             else {"wifi_rssi": -127}
         )
     return {
-        "type": "Machine" if query_type == "S1_INFO" else "OpInfo",
+        "type": "OpInfo" if query_type == "OpInfo" else "Machine",
         "res": 0,
         "data": data,
         "chksum": crc16(
@@ -175,9 +181,14 @@ async def test_full_cycle_entities_fixed_requests_and_privacy(hass, transport):
     entry = await setup(hass)
     coordinator = entry.runtime_data.coordinator
     buses, _ = transport
-    assert len(buses) == 2
+    assert len(buses) == 4
     assert bytes(buses[0].written) == query_frame(S1)
     assert bytes(buses[1].written) == query_frame(OP)
+    assert bytes(buses[2].written) == query_frame(INFO)
+    assert bytes(buses[3].written) == query_frame(WARN)
+    assert hass.states.get("sensor.aiper_ble_battery").state == "73"
+    assert hass.states.get("sensor.aiper_ble_operating_status_raw").state == "2"
+    assert hass.states.get("sensor.aiper_ble_operating_mode_raw").state == "1"
     for bus in buses:
         assert members(bus).count("Connect") == 1
         assert members(bus).count("Disconnect") == 1
@@ -197,8 +208,8 @@ async def test_full_cycle_entities_fixed_requests_and_privacy(hass, transport):
     solar = hass.states.get("sensor.aiper_ble_solar_status_raw")
     wifi = hass.states.get("sensor.aiper_ble_wi_fi_rssi_raw")
     assert solar.state == "0"
-    assert wifi.state == "-127"
-    assert "unit_of_measurement" not in wifi.attributes
+    assert wifi is None  # Raw/sentinel diagnostic is opt-in, not default UI.
+    assert coordinator.data["wifi_rssi_raw"] == -127
     assert hass.states.get("sensor.aiper_ble_polling_status").state == "ok"
     diagnostic = await async_get_config_entry_diagnostics(hass, entry)
     for private in (
@@ -210,10 +221,10 @@ async def test_full_cycle_entities_fixed_requests_and_privacy(hass, transport):
         assert private not in str(coordinator.data)
         assert private not in str(hass.states.async_all())
         assert private not in str(diagnostic)
-    assert len(buses) == 2  # Diagnostics are cached.
+    assert len(buses) == 4  # Diagnostics are cached.
     before = coordinator.data
     await coordinator.async_refresh()
-    assert len(buses) == 2  # Manual refresh cannot bypass cooldown.
+    assert len(buses) == 4  # Manual refresh cannot bypass cooldown.
     assert coordinator.data == before
 
 
@@ -223,11 +234,11 @@ async def test_scheduler_repeats_at_interval_and_stops_on_unload(hass, transport
     coordinator.next_attempt = 0
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=301))
     await hass.async_block_till_done()
-    assert len(transport[0]) == 4
+    assert len(transport[0]) == 8
     assert await hass.config_entries.async_unload(entry.entry_id)
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(hours=2))
     await hass.async_block_till_done()
-    assert len(transport[0]) == 4
+    assert len(transport[0]) == 8
 
 
 async def test_atomic_failure_unavailability_backoff_and_recovery(hass, transport):
@@ -332,7 +343,7 @@ async def test_manual_action_excludes_poll(hass, transport):
     other = asyncio.create_task(asyncio.Event().wait())
     entry.runtime_data.task = other
     await coordinator.async_refresh()
-    assert len(transport[0]) == 2
+    assert len(transport[0]) == 4
     assert coordinator.status == "busy"
     other.cancel()
     with pytest.raises(asyncio.CancelledError):
@@ -361,7 +372,7 @@ async def test_poll_excludes_manual_action_and_unload_cleans_up(hass, transport)
     assert await hass.config_entries.async_unload(entry.entry_id)
     with pytest.raises(asyncio.CancelledError):
         await task
-    assert len(transport[0]) == 3
+    assert len(transport[0]) == 5
     assert members(transport[0][-1]).count("StopNotify") == 1
     assert members(transport[0][-1]).count("Disconnect") == 1
     assert transport[0][-1].handlers == []
@@ -394,7 +405,7 @@ async def test_options_require_consent_and_reload_disables_polling(hass, transpo
     )
     assert result["type"] == FlowResultType.CREATE_ENTRY
     await hass.async_block_till_done()
-    assert len(transport[0]) == 2
+    assert len(transport[0]) == 4
     old = entry.runtime_data
     result = await hass.config_entries.options.async_init(entry.entry_id)
     await hass.config_entries.options.async_configure(
@@ -403,7 +414,7 @@ async def test_options_require_consent_and_reload_disables_polling(hass, transpo
     await hass.async_block_till_done()
     assert old.closing
     assert not entry.runtime_data.coordinator.enabled
-    assert len(transport[0]) == 2
+    assert len(transport[0]) == 4
     assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
     assert hass.states.get("sensor.aiper_ble_polling_status").state == "disabled"
 
@@ -440,7 +451,7 @@ async def test_next_success_changes_entity_states(hass, transport):
     await coordinator.async_refresh()
     assert hass.states.get("sensor.aiper_ble_temperature").state == "26.5"
     assert hass.states.get("sensor.aiper_ble_solar_status_raw").state == "1"
-    assert hass.states.get("sensor.aiper_ble_wi_fi_rssi_raw").state == "-64"
+    assert coordinator.data["wifi_rssi_raw"] == -64
 
 
 async def test_failed_manual_cleanup_suspends_automatic_polling(hass, transport):
@@ -473,7 +484,7 @@ async def test_failed_manual_cleanup_suspends_automatic_polling(hass, transport)
     assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
     coordinator.next_attempt = 0
     await coordinator.async_refresh()
-    assert len(transport[0]) == 2
+    assert len(transport[0]) == 4
 
 
 async def test_timer_jitter_does_not_skip_cycle(hass, transport):
@@ -481,4 +492,4 @@ async def test_timer_jitter_does_not_skip_cycle(hass, transport):
     coordinator = entry.runtime_data.coordinator
     coordinator.next_attempt = asyncio.get_running_loop().time() + 0.5
     await coordinator.async_refresh()
-    assert len(transport[0]) == 4
+    assert len(transport[0]) == 8

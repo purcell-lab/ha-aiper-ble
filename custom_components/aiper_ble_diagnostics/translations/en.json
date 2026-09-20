@@ -19,7 +19,7 @@
     "step": {
       "init": {
         "title": "Guarded Surfer S1 polling",
-        "description": "Experimental polling over HA Bluetooth, including active ESPHome proxies. HA selects the connection route. Enabling authorises recurring S1_INFO and OpInfo requests, notification subscriptions and disconnections, including after HA restarts. Keep other clients idle; disable polling and wait for cleanup before using the app. Remote routes do not expose local pairing/trust or notification-ownership checks. No pairing or robot control commands. Temperature sensor location, solar codes and Wi-Fi RSSI meaning remain unverified. Failures back off; unsafe cleanup suspends polling.",
+        "description": "Experimental polling over HA Bluetooth, including active ESPHome proxies. HA selects the connection route. Enabling authorises recurring S1_INFO, OpInfo, INFO and WARN requests, notification subscriptions and disconnections, including after HA restarts. Keep other clients idle; disable polling and wait for cleanup before using the app. Remote routes do not expose local pairing/trust or notification-ownership checks. No pairing or robot control commands. Temperature location and status/mode/solar/warning code meanings remain unverified. INFO battery uses the app-derived 0-100 scale; compare against the app during validation. Failures back off; unsafe cleanup suspends polling.",
         "data": {
           "polling_enabled": "Enable recurring BLE status queries",
           "poll_interval": "Successful poll interval in seconds (300 to 3600)",
@@ -38,7 +38,7 @@
   "services": {
     "poll_now": {
       "name": "Poll Aiper telemetry now",
-      "description": "Run one guarded S1_INFO and OpInfo cycle through HA Bluetooth and update sensors. Polling must already be enabled and authorised. May shorten offline failure backoff, but cannot bypass the configured normal interval, an active probe, suspension, protocol checks or disconnect cleanup. No robot controls.",
+      "description": "Run one guarded S1_INFO, OpInfo, INFO and WARN cycle through HA Bluetooth and update sensors. Polling must already be enabled and authorised. May shorten offline failure backoff, but cannot bypass the configured normal interval, an active probe, suspension, protocol checks or disconnect cleanup. No robot controls.",
       "fields": {
         "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
         "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed and other BLE clients are idle."}
@@ -56,24 +56,24 @@
     },
     "protocol_preview": {
       "name": "Preview one status request offline",
-      "description": "Build one fixed OpInfo or S1_INFO frame without Bluetooth. Based on static inspection of Aiper 3.6.1 build 82, not a verified robot exchange.",
+      "description": "Build one fixed OpInfo, S1_INFO, INFO or WARN frame without Bluetooth. INFO and WARN are app-derived from Aiper 3.6.1 build 82; live validation is still required.",
       "fields": {
-        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (default) or S1_INFO (temperature and solar candidates). One request only; never both or an arbitrary AT command."},
+        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (Wi-Fi), S1_INFO (temperature/solar), INFO (status/mode/battery) or WARN (raw warning code). One fixed request only; no arbitrary AT command."},
         "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
-        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo; include_empty_crc models an explicit empty object using seed 0x9966. S1_INFO has nonempty data and always includes CRC regardless of this choice."},
+        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo; include_empty_crc models an explicit empty object using seed 0x9966. S1_INFO, INFO and WARN always include the nonempty-data CRC regardless of this choice."},
         "write_mode": {"name": "Write transport", "description": "command requires write-without-response; request requires write. Both transports appear in app 3.6.1. The selected flag must exist; no automatic fallback."}
       }
     },
     "query_once": {
       "name": "Query Aiper status once",
-      "description": "Experimental S1 legacy-XOR query. Enables notifications (CCCD write), sends either OpInfo or S1_INFO, waits within a fixed deadline, stops notifications and disconnects. Not write-free. No controls, pairing, retries or automatic fallback.",
+      "description": "Experimental S1 legacy-XOR query. Enables notifications (CCCD write), sends one selected OpInfo, S1_INFO, INFO or WARN request, waits within a fixed deadline, stops notifications and disconnects. Not write-free. No controls, pairing, retries or automatic fallback.",
       "fields": {
-        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (default) or S1_INFO (temperature and solar candidates). Only the selected request is sent. This manual diagnostic action does not update the polling sensors."},
+        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (Wi-Fi), S1_INFO (temperature/solar), INFO (status/mode/battery) or WARN (raw warning code). Only the selected request is sent. This local-only diagnostic action does not update the polling sensors."},
         "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
-        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo. S1_INFO always includes the mandatory nonempty-data CRC regardless of this choice. Hardware compatibility remains unverified."},
+        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo. S1_INFO, INFO and WARN always include the mandatory nonempty-data CRC regardless of this choice. INFO and WARN hardware compatibility remains unverified."},
         "write_mode": {"name": "Write transport", "description": "command requires write-without-response; request requires write. The app supports both, but this test never switches transport automatically."},
         "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle, and the robot stationary."},
-        "confirm_query_write": {"name": "One selected query write authorised", "description": "Authorise exactly the selected OpInfo or S1_INFO request, potentially split across multiple ATT writes. No retries or setters."},
+        "confirm_query_write": {"name": "One selected query write authorised", "description": "Authorise exactly the selected OpInfo, S1_INFO, INFO or WARN request, potentially split across multiple ATT writes. No retries or setters."},
         "confirm_notifications": {"name": "Notification subscription authorised", "description": "Authorise StartNotify and StopNotify, including their CCCD writes. This is not a write-free test."},
         "confirm_legacy_probe": {"name": "Guarded probe without advertisement evidence", "description": "Optional, false by default and never saved. Authorise this S1-only legacy experiment if company-zero advertisement data is absent. Requires a resolved, exact legacy GATT endpoint. ECDH hints, key-exchange characteristics and malformed data still veto the query."}
       }

@@ -4,9 +4,14 @@ An opt-in Home Assistant custom integration for local BLE diagnostics and experi
 
 ## Guarded polling and sensors
 
+Version 0.9.0 adds separate fixed INFO/WARN requests and narrows the default entity
+set. Read the [DP validation matrix](info_dp_validation.md) before upgrading:
+INFO/WARN are app-derived and still need live validation. Existing enabled polling
+will include these additional queries after restart.
+
 In the integration's **Configure** options, enable polling only when exclusive use of this robot's BLE connection can be maintained. The separate recurring-query acknowledgement is required. Pause by disabling polling before opening the app or using another BLE client, and let connection cleanup finish. Enabling is persistent and authorises a first poll on setup/reload/restart.
 
-The default successful-poll interval is **300 seconds**, configurable from 300 to 3600 seconds. Each cycle uses two independently bounded connections: `S1_INFO`, disconnect, then `OpInfo`, disconnect. Both use the live-tested `request` write mode; OpInfo omits the empty-data checksum, while S1_INFO always includes its data CRC. HA selects an available adapter or active proxy; the integration never retries a physical connect or replays a query. No control, pairing, provisioning, private scanner or arbitrary query is permitted. This is not write-free: each cycle writes two fixed status requests and toggles notifications.
+The default successful-poll interval is **300 seconds**, configurable from 300 to 3600 seconds. Each cycle uses four independently bounded connections: `S1_INFO`, `OpInfo`, `INFO`, then `WARN`, disconnecting after each. All use `request` write mode; OpInfo omits the empty-data checksum, while S1_INFO, INFO and WARN always include their data CRC. HA selects an available adapter or active proxy; the integration never retries a physical connect or replays a query. No control, pairing, provisioning, private scanner or arbitrary query is permitted. This is not write-free: each cycle writes four fixed status requests and toggles notifications.
 
 The entire cycle has a 180-second deadline, followed where necessary by bounded notification/disconnection cleanup. Existing per-stage deadlines still apply. One failed query stops the cycle. Subsequent attempts back off to 10, 20, 40 and at most 60 minutes with the default interval. The explicit `poll_now` action may shorten failure backoff after the normal configured interval has elapsed; it cannot bypass that minimum gap or safety checks. Ordinary entity refreshes retain backoff. All actions share the same in-flight guard. A cleanup failure, ECDH evidence or another explicitly unsupported protocol/security condition suspends polling until reviewed and reloaded. Restart/reload clears the volatile suspension, so review before doing either. Diagnostic downloads never query the device.
 
@@ -15,18 +20,23 @@ If company-zero advertisement evidence is absent, the separately labelled persis
 | Sensor | Meaning |
 |---|---|
 | Aiper BLE temperature | S1_INFO first value divided by 10, in °C. Physical sensor location is unverified; not labelled water or outdoor temperature. |
+| Aiper BLE battery | INFO third integer, accepted only in 0-100 and shown as %. App-derived mapping; live validation pending. |
+| Aiper BLE operating status/mode raw | INFO first/second integers. No speculative enum labels. |
+| Aiper BLE warning code raw | WARN signed decimal int64. App-derived; no inferred fault labels or statistical state class. |
 | Aiper BLE solar status raw | S1_INFO second integer. No charging/not-charging mapping is asserted. |
 | Aiper BLE Wi-Fi RSSI raw | Integer `data.wifi_rssi` from OpInfo. No dBm unit or sentinel interpretation is asserted, including for -127. Missing/non-integer data makes this sensor unavailable. |
 | Aiper BLE last successful poll | Completion time of the last fully verified cycle. |
 | Aiper BLE polling status | Disabled, waiting, ok, busy, failed, interrupted or suspended, with fixed error codes and failure count. |
 
-The complete v0.7.0 field list is in [Entity coverage](aiper_ble_proxy_polling.md#entity-coverage):
-raw S1 temperature and time zone, all five direct app-defined OpInfo fields, and
-all 11 known optional nested Machine fields. There are 23 entities including
-status/last-success indicators. Missing fields stay unavailable; optional raw
-battery fields do not assert verified SOC percentage.
+The historical v0.7.0 candidate list is in [Entity coverage](aiper_ble_proxy_polling.md#entity-coverage).
+It included speculative direct OpInfo and nested Machine fields, not confirmed
+robot capabilities. Version 0.9.0 registers 27 entities but enables only nine
+by default: six operational readings and three status/timestamp indicators.
+Raw duplicate temperature, time zone, Wi-Fi metadata and all speculative
+OpInfo/Machine fields are opt-in diagnostics. Existing optional entities are
+hidden once, not deleted or disabled. Missing data is never filled with zero.
 
-Telemetry publishes atomically only after both replies have the expected query shape, integer `res: 0`, matching legacy CRC and confirmed notification shutdown/disconnection. CRC covers compact UTF-8 JSON `data` in received key order using seed `0x9966`; it detects corruption, not spoofing. Invalid/missing CRC, unsuccessful replies and partial cycles do not publish. Disabled or failed polling makes telemetry unavailable rather than presenting old readings as current. No battery/mode fields are invented from absent data, and serials, raw frames and complete responses never enter telemetry entities or coordinator data. The existing discovery-result entity and unique ID are unchanged; it continues to report manual actions separately.
+Telemetry publishes atomically only after all four replies have the expected query shape, integer `res: 0`, matching legacy CRC and confirmed notification shutdown/disconnection. CRC covers compact UTF-8 JSON `data` in received key order using seed `0x9966`; it detects corruption, not spoofing. Invalid/missing CRC, unsuccessful replies and partial cycles do not publish. Disabled or failed polling makes telemetry unavailable rather than presenting old readings as current. No battery/mode fields are invented from absent data, and serials, raw frames and complete responses never enter telemetry entities or coordinator data. The existing discovery-result entity and unique ID are unchanged; it continues to report manual actions separately.
 
 This remains an **exclusive-access experimental pilot**. Recurring polling uses HA's shared connection routing, including active proxies, while legacy diagnostic services retain pinned local BlueZ exchanges. Remote backends cannot expose all local ownership checks, and no transport can eliminate races with an external client. See HA's [Bluetooth integration guidance](https://developers.home-assistant.io/docs/bluetooth/) and the specific safety differences in the proxy-polling document.
 
@@ -57,7 +67,7 @@ Authenticated action responses retain decoded frames and timestamped raw notific
 
 - **No automatic BLE connection by default:** Setup, reload and startup connect only after recurring polling is explicitly enabled. Diagnostic downloads never connect. There is no automatic discovery flow or button entity.
 - **Explicit actions:** `discover` requires `confirm_app_closed: true` and a specific entry. The separate `read_once` action additionally requires `confirm_read_only: true`. Neither is scheduled.
-- **Separate protocol action:** `query_once` requires three confirmations, an explicit checksum policy and an explicit write transport. Missing advertisement evidence additionally requires per-call `confirm_legacy_probe: true`, default false and never saved. It enables notifications and writes one fixed request selected by `query_type`: `OpInfo` (default) or `S1_INFO`, never both. It is not write-free. Discovery and raw-read transports still cannot write or subscribe.
+- **Separate protocol action:** `query_once` requires three confirmations, an explicit checksum policy and an explicit write transport. Missing advertisement evidence additionally requires per-call `confirm_legacy_probe: true`, default false and never saved. It enables notifications and writes exactly one fixed request selected by `query_type`: `OpInfo` (default), `S1_INFO`, `INFO` or `WARN`. It is not write-free. Discovery and raw-read transports still cannot write or subscribe.
 - **Discovery remains metadata only:** One connect attempt, service/characteristic/descriptor UUIDs and characteristic flags, then disconnect. It cannot call `ReadValue`.
 - **Optional read boundary:** `read_once` permits one `ReadValue({})` on the exact Aiper endpoint below, after fresh metadata checks. At most 512 returned bytes are accepted into the result. No application writes, notification subscriptions, descriptor reads/writes, pairing, trust changes, WiFi provisioning or robot-control commands.
 - **Guards:** Target and adapter identity checks; reject an existing connection, pairing/trust changes, a blocked device or a powered-off adapter. No fallback adapter, retries, scanner restart or device removal.
@@ -167,16 +177,16 @@ The initial implementation used the community [pool-robot BLE specification at c
 | Standard/S1 UUID mapping | Pinned Surfer S1 name, local adapter and exact service/characteristic parents |
 | Legacy XOR transport | Four-byte XOR, Base64, newline framing and fragmented/coalesced response decoding |
 | Legacy CRC16-Modbus | Corrected initial value `0x9966`; `{}` gives decimal 6921; separate SDK 0x1021 algorithm is not implemented |
-| Status request | One fixed OpInfo request, optionally with empty-data checksum, OR Machine `AT+S1_INFO?` with mandatory CRC 49921 |
+| Status request | One fixed OpInfo request, optionally with empty-data checksum, OR Machine `AT+S1_INFO?` (CRC 49921), `AT+INFO?` (CRC 10442), or `AT+WARN?` (CRC 10501) |
 | Notifications | Explicit StartNotify, exact BlueZ sender/path/interface filtering, bounded queue, StopNotify cleanup |
 | Chunking | At most 200 bytes and at most reported MTU minus three; 20-byte fallback |
-| State evidence | OpInfo numeric/boolean candidates remain unscaled; S1_INFO yields raw temperature, app-derived Celsius (/10) and integer solar state |
+| State evidence | OpInfo candidates remain unscaled; S1_INFO supplies temperature/solar; INFO supplies raw status/mode and bounded app-derived battery percentage; WARN supplies a raw warning code |
 | New ECDH/AES protocol | Manufacturer hint or target key-exchange characteristic vetoes the query; no handshake implemented |
 | Other models, DevInfo subscriptions, controls, provisioning, firmware | Not implemented or exposed |
 
 ### Known ambiguities are not silently resolved
 
-- **Empty-data CRC:** For OpInfo prefer `omit_empty_crc`: the app's legacy factory serializes null query data as `{}` without a checksum. `include_empty_crc` is retained as an explicitly selected experimental form representing a non-null empty object, now with CRC seed `0x9966`. This setting only affects OpInfo. S1_INFO always includes its mandatory nonempty-data CRC, whichever empty-data policy is supplied. No retry or second variant is sent.
+- **Empty-data CRC:** For OpInfo prefer `omit_empty_crc`: the app's legacy factory serializes null query data as `{}` without a checksum. `include_empty_crc` is retained as an explicitly selected experimental form representing a non-null empty object, now with CRC seed `0x9966`. This setting only affects OpInfo. S1_INFO, INFO and WARN always include their mandatory nonempty-data CRC, whichever empty-data policy is supplied. No retry or second variant is sent.
 - **Write transport:** `command` requires `write-without-response`; `request` requires `write`. App 3.6.1 supports a write-with-response fallback, but this harness keeps the transport explicitly selected and never falls back.
 - **Protocol evidence:** Company ID zero first byte `0x01` vetoes the query. Other valid nonempty first-byte values indicate legacy. Missing/empty data remains `unknown`; only `confirm_legacy_probe: true` allows the connection experiment. Malformed evidence is a separate unconditional veto. Cached hints are checked twice before connecting and again before notifications and writes. The target's key-exchange characteristic `4a5a64e6-2537-11ee-be56-0242ac120002` vetoes a query even if legacy advertisement data is present or the opt-in is true. Cached GATT can veto, not positively authorise, a connection. A connected, ServicesResolved device with one exact legacy endpoint and correct flags/parents is required before any notification subscription. Resolution can reuse BlueZ's cache; it is not fresh over-the-air proof.
 - **Temperature:** App 3.6.1 maps shadow `Machine.temp` and the separate `S1_INFO` first response field to Celsius by dividing by ten. Its S1 `OpInfo` panel handler reads Wi-Fi fields. Only the fixed S1_INFO parser applies that scale; OpInfo candidates remain unscaled. Manual query actions do not update the polling sensors. The physical sensor location remains unverified, so this is not labelled outdoor or water temperature.
@@ -199,6 +209,16 @@ response_variable: aiper_protocol_preview
 The example follows the statically inspected legacy null-data serializer, subsequently exercised by a successful query on one Surfer S1. That result is not a compatibility guarantee for other firmware or models. The preview returns exact request JSON, encoded hex, byte count, APK hash and original static-analysis assumptions. It opens no system bus, reads no Bluetooth metadata and does not connect. For MCP use `return_response: true`.
 
 For the fixed S1 query, change only `query_type` to `S1_INFO`. The preview then shows `{"type":"Machine","data":{"cmd":"AT+S1_INFO?"},"chksum":49921}` before encoding and `checksum_semantics: nonempty_data_crc_required`. Omitting `query_type` preserves the earlier OpInfo default.
+
+For INFO, select `query_type: INFO`. The preview shows
+`{"type":"Machine","data":{"cmd":"AT+INFO?"},"chksum":10442}`. The separate
+[INFO validation guide](info_dp_validation.md) defines its strict response
+shape, evidence limits and deployment acceptance checks.
+
+For WARN, select `query_type: WARN`. The preview shows
+`{"type":"Machine","data":{"cmd":"AT+WARN?"},"chksum":10501}`. The
+[additional-query assessment](apk_query_catalog.md) defines its strict signed
+int64 parser and explains why other APK candidates remain excluded.
 
 ### S1_INFO diagnostic interpretation
 
@@ -226,7 +246,8 @@ data:
 response_variable: aiper_private_query_result
 ```
 
-This example selects only S1_INFO. Select `OpInfo` instead for the other fixed request; a separate invocation and approval are needed for a second query.
+This example selects only S1_INFO. Select `OpInfo`, `INFO` or `WARN` for the other fixed
+requests; a separate invocation and approval are needed for another manual query.
 
 If company-zero advertisement evidence is missing, a separate explicit approval is needed to set `confirm_legacy_probe: true` for this call. This permits only the guarded legacy experiment; it never overrides ECDH, malformed data, identity or endpoint checks and is not persisted in entry data or options. Leave it false when evidence is present.
 

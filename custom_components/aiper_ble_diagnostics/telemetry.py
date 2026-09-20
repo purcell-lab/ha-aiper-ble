@@ -275,8 +275,8 @@ class QueryBluez(Bluez):
                             else "unverified_no_units"
                         )
                         report["response_match"] = (
-                            "type_and_s1_info_prefix_no_request_id"
-                            if self.query.query_type == "S1_INFO"
+                            f"type_and_{self.query.query_type.lower()}_prefix_no_request_id"
+                            if self.query.query_type != "OpInfo"
                             else "type_only_no_request_id"
                         )
                         report["response_checksum_validation"] = "not_verified"

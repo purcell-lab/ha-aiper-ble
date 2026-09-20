@@ -11,12 +11,14 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
 from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_RESULT
 from .coordinator import AiperCoordinator
+from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
 from .probe import Target, open_bluez
 from .probe import probe as run_probe
 from .protocol import Listen, Query, preview
@@ -197,7 +199,9 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     )
     query_schema = {
         **schema,
-        vol.Optional("query_type", default="OpInfo"): vol.In(["OpInfo", "S1_INFO"]),
+        vol.Optional("query_type", default="OpInfo"): vol.In(
+            ["OpInfo", "S1_INFO", "INFO", "WARN"]
+        ),
         vol.Required("checksum_mode"): vol.In(["include_empty_crc", "omit_empty_crc"]),
         vol.Required("write_mode"): vol.In(["command", "request"]),
     }
@@ -269,6 +273,33 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         ),
         supports_response=SupportsResponse.OPTIONAL,
     )
+    return True
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Once-only presentation migration, without deleting or disabling history.
+
+    Existing enabled diagnostics stay functional for automations, but leave the
+    default device view. Preserve user hiding/disabling and custom display names.
+    Users can unhide a diagnostic after this migration; reloads do not undo it.
+    """
+    if entry.version != 1:
+        return False
+    if entry.minor_version < 2:
+        registry = er.async_get(hass)
+        optional = set(SENSOR_NAMES) - DEFAULT_ENABLED
+        unique_ids = {f"{entry.entry_id}_{key}" for key in optional}
+        for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+            if (
+                entity.unique_id in unique_ids
+                and entity.hidden_by is None
+                and entity.disabled_by is None
+                and entity.name is None
+            ):
+                registry.async_update_entity(
+                    entity.entity_id, hidden_by=er.RegistryEntryHider.INTEGRATION
+                )
+        hass.config_entries.async_update_entry(entry, minor_version=2)
     return True
 
 

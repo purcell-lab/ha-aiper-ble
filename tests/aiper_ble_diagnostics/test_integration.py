@@ -278,7 +278,7 @@ def query_data(entry):
     }
 
 
-@pytest.mark.parametrize("query_type", ["OpInfo", "S1_INFO"])
+@pytest.mark.parametrize("query_type", ["OpInfo", "S1_INFO", "INFO", "WARN"])
 async def test_protocol_preview_never_opens_bus(entry, fake_bluez, hass, query_type):
     result = await hass.services.async_call(
         DOMAIN,
@@ -295,7 +295,11 @@ async def test_protocol_preview_never_opens_bus(entry, fake_bluez, hass, query_t
     assert result["request_json"] == (
         {"type": "OpInfo", "data": {}}
         if query_type == "OpInfo"
-        else {"type": "Machine", "data": {"cmd": "AT+S1_INFO?"}, "chksum": 49921}
+        else {
+            "type": "Machine",
+            "data": {"cmd": f"AT+{query_type}?"},
+            "chksum": {"S1_INFO": 49921, "INFO": 10442, "WARN": 10501}[query_type],
+        }
     )
     assert fake_bluez.calls == []
     assert entry.runtime_data.last_result["status"] == "never_run"
@@ -309,7 +313,7 @@ async def test_protocol_preview_never_opens_bus(entry, fake_bluez, hass, query_t
         "confirm_notifications",
     ],
 )
-@pytest.mark.parametrize("query_type", ["OpInfo", "S1_INFO"])
+@pytest.mark.parametrize("query_type", ["OpInfo", "S1_INFO", "INFO", "WARN"])
 async def test_query_requires_three_confirmations(
     entry, fake_bluez, hass, field, query_type
 ):
