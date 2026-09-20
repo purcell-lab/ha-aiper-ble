@@ -65,8 +65,8 @@ capture limit aborts at the next pre-connect/pre-write guard; an already
 started query is never replayed. It does not
 write raw logs to disk, the HA log, sensors or diagnostics.
 
-Only exact, allowlisted `esp32_ble_client` messages bearing the target's
-address are converted into events. Addresses and raw text are discarded.
+Only exact, allowlisted transport messages are converted into events.
+Addresses and raw text are discarded.
 Events cover connecting/open, GATT lifecycle, MTU result, service discovery,
 disconnect and selected error codes
 ([firmware event formats](https://github.com/esphome/esphome/blob/2026.9.0/esphome/components/esp32_ble_client/ble_client_base.cpp)).
@@ -84,6 +84,22 @@ events. It timed out during connection with no query writes; BLE and dedicated
 API cleanup were confirmed. This does not establish where the MCU connection
 failed. v0.9.8 adds the documented header variation and counters for a repeat
 bounded investigation, not a transport or firmware fix.
+
+The v0.9.8 repeat received 14 messages again, with zero old BLE-tag headers.
+Review then identified the proxy's separate
+[Bluedroid backend](https://github.com/esphome/esphome/blob/2026.9.0/esphome/components/bluetooth_connection/bluetooth_connection_bluedroid.cpp)
+and [connection hub](https://github.com/esphome/esphome/blob/2026.9.0/esphome/components/bluetooth_connection/bluetooth_connection_hub.cpp).
+They emit `bluetooth_connection`, not the legacy `esp32_ble_client` tag.
+
+v0.9.9 accepts target-addressed hub messages directly. Addressless backend
+messages are accepted only after a target-addressed `bluetooth_proxy` v3
+connection-request message binds that slot. A different device on that slot
+or a terminal event clears the binding. Unknown slots/messages are discarded.
+Events distinguish `target_address` from `bound_slot` attribution; neither
+MAC addresses nor slot identifiers are retained in output. Correlation depends
+on ordered, complete log delivery and is not independent proof of ownership.
+No raw event absence proves an MCU phase was skipped. The modern backend
+does not log every successful MTU or GATT event at DEBUG.
 
 ## Interpretation limits
 

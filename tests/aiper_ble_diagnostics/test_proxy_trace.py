@@ -124,6 +124,8 @@ async def test_format_counters_are_fixed_vocabulary_only():
         "other_device": 1,
         "target_header": 1,
         "target_message_unmatched": 1,
+        "modern_header": 0,
+        "unattributed_slot": 0,
     }
     assert "PRIVATE" not in json.dumps(capture.data)
 
@@ -137,6 +139,93 @@ async def test_invalid_thread_header_is_rejected(thread):
     capture.receive(SimpleNamespace(message=raw.encode()))
     assert not capture.data["events"]
     assert capture.data["format_counts"]["ble_tag_header_unmatched"] == 1
+
+
+def modern(message, slot=0, address=None, tag="bluetooth_connection"):
+    identity = f"[{address}] " if address else ""
+    return SimpleNamespace(
+        message=f"[D][{tag}:123]: [{slot}] {identity}{message}".encode()
+    )
+
+
+async def test_modern_events_require_explicit_target_slot_binding():
+    capture = trace.EventCapture(TARGET.address)
+    capture.receive(modern("Connection open"))
+    assert not capture.data["events"]
+    capture.receive(
+        modern(
+            "Connecting v3 without cache", address=TARGET.address, tag="bluetooth_proxy"
+        )
+    )
+    for message in [
+        "0x00 Connecting",
+        "Connection open",
+        "Service discovery complete",
+        "MTU exchange failed, status=133",
+        "DISCONNECT_EVT reason=0x13",
+    ]:
+        capture.receive(modern(message))
+    assert [x["event"] for x in capture.data["events"]] == [
+        "proxy_connect_request",
+        "connecting",
+        "connection_open",
+        "services_complete",
+        "mtu_failed",
+        "disconnect",
+    ]
+    assert capture.data["events"][-1]["reason"] == 19
+    assert capture.data["events"][-1]["attribution"] == "bound_slot"
+    assert TARGET.address not in json.dumps(capture.data)
+
+
+@pytest.mark.parametrize(
+    "terminal",
+    [
+        "Disconnected, reason=0x16, freeing slot",
+        "Timeout waiting for teardown, forcing IDLE",
+        "Connection open failed, status=133",
+    ],
+)
+async def test_modern_slot_binding_expires_on_terminal_event(terminal):
+    capture = trace.EventCapture(TARGET.address)
+    capture.receive(
+        modern(
+            "Connecting v3 without cache", address=TARGET.address, tag="bluetooth_proxy"
+        )
+    )
+    capture.receive(modern(terminal))
+    assert capture.bound_slot is None
+    count = len(capture.data["events"])
+    capture.receive(modern("Connection open"))
+    assert len(capture.data["events"]) == count
+
+
+async def test_modern_other_device_slot_reuse_drops_binding_and_payload():
+    capture = trace.EventCapture(TARGET.address)
+    capture.receive(
+        modern(
+            "Connecting v3 without cache", address=TARGET.address, tag="bluetooth_proxy"
+        )
+    )
+    capture.receive(modern("Connection open", slot=1))
+    capture.receive(modern("PRIVATE_SSID", address=SOURCE))
+    assert capture.bound_slot is None
+    capture.receive(modern("Connection open"))
+    assert len(capture.data["events"]) == 1
+    assert "PRIVATE" not in json.dumps(capture.data)
+    assert SOURCE not in json.dumps(capture.data)
+
+
+async def test_modern_addressed_hub_event_needs_no_slot_guess():
+    capture = trace.EventCapture(TARGET.address)
+    capture.receive(
+        modern(
+            "Discovery finished, sending connected (mtu=247)", address=TARGET.address
+        )
+    )
+    assert capture.data["events"][0]["mtu"] == 247
+    assert capture.data["events"][0]["attribution"] == "target_address"
+    assert capture.bound_slot is None
 
 
 @pytest.mark.parametrize("cap", ["MAX_EVENTS", "MAX_LINES", "MAX_BYTES"])
