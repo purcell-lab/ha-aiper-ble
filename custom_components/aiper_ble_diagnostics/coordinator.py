@@ -33,6 +33,7 @@ POLL_DETAIL_FIELDS = (
     "query_type",
     "response_evidence",
     "transport",
+    "transport_diagnostics",
     "status",
     "phase",
     "failure_stage",

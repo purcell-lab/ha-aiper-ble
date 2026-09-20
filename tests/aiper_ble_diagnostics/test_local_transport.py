@@ -52,6 +52,11 @@ async def test_local_isolated_query_verified_and_pinned(
     entry = await setup(hass, {"use_local_adapter": True})
     result = await call_query(hass, entry, service)
     assert result["transport"] == "local_bluez"
+    diagnostic = result["transport_diagnostics"]
+    assert diagnostic["backend"] == "local_bluez"
+    assert diagnostic["selected_route"] is None
+    assert diagnostic["route_snapshots"] == {}
+    assert diagnostic["phase_ms"]["local_probe_including_cleanup"] >= 0
     assert result["mode"] == "isolated_local_bluez_query"
     assert result["status"] == "query_complete"
     assert result["phase"] == "verify_response"

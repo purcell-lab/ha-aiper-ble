@@ -157,6 +157,19 @@ async def test_proxy_only_fixed_query_and_cleanup(hass, radio):
     assert client.calls == ["connect", "start"] + ["write"] * 5 + ["stop", "disconnect"]
     radio.get_device.assert_called_with(hass, TARGET.address, connectable=True)
     assert "PRIVATE_BACKEND_IDENTIFIER" not in str(report)
+    diagnostic = report["transport_diagnostics"]
+    assert diagnostic["backend"] == "unknown"
+    assert diagnostic["selected_route"] is None
+    assert diagnostic["outer_connect_expired"] is False
+    assert diagnostic["exchange_expired"] is False
+    assert set(diagnostic["phase_ms"]) >= {
+        "connect",
+        "start_notify",
+        "write",
+        "wait_response",
+        "stop_notify",
+        "disconnect",
+    }
 
 
 async def test_real_transport_wired_to_coordinator_and_sensors(hass, radio):
@@ -169,6 +182,26 @@ async def test_real_transport_wired_to_coordinator_and_sensors(hass, radio):
     assert bytes(radio.clients[2].written) == query_frame(INFO)
     assert bytes(radio.clients[3].written) == query_frame(WARN)
     assert entry.runtime_data.coordinator.data["wifi_rssi_raw"] == -127
+    for detail in entry.runtime_data.coordinator.last_poll_queries:
+        assert detail["transport_diagnostics"]["requested_transport"] == "ha_bluetooth"
+    calls = [list(client.calls) for client in radio.clients]
+    with (
+        patch.object(
+            transport.bluetooth,
+            "async_scanner_devices_by_address",
+            side_effect=AssertionError("Downloading must not inspect Bluetooth"),
+        ),
+        patch.object(
+            transport,
+            "establish_connection",
+            side_effect=AssertionError("Downloading must not connect"),
+        ),
+    ):
+        downloaded = await async_get_config_entry_diagnostics(hass, entry)
+    assert downloaded["polling"]["last_poll_queries"] == (
+        entry.runtime_data.coordinator.last_poll_queries
+    )
+    assert calls == [client.calls for client in radio.clients]
 
 
 async def test_all_dp_entities_registered_and_updated_from_full_reply(hass, radio):
@@ -387,6 +420,9 @@ async def test_cancel_at_every_connection_phase(hass, radio, stage):
         assert "stop" in radio.clients[0].calls
     assert not radio.clients[0].is_connected
     assert report["error_category"] == "cancelled"
+    assert report["transport_diagnostics"]["cancelled"] is True
+    assert "disconnect" in report["transport_diagnostics"]["phase_ms"]
+    assert report["transport_diagnostics"]["elapsed_ms"] >= 0
     assert (
         report["failure_stage"]
         == {"connect": "connect", "start": "start_notify", "write": "write"}[stage]
@@ -401,6 +437,8 @@ async def test_connection_timeout_cleans_tracked_client(hass, radio):
     assert radio.clients[0].calls == ["connect", "disconnect"]
     assert report["failure_stage"] == "connect"
     assert report["error_category"] == "timeout"
+    assert report["transport_diagnostics"]["outer_connect_expired"] is True
+    assert report["transport_diagnostics"]["exchange_expired"] is None
 
 
 @pytest.mark.parametrize(
@@ -427,6 +465,33 @@ async def test_notification_timeout_has_no_retry_and_cleans_up(hass, radio):
     assert report["cleanup"] == "disconnected_confirmed"
     assert len(radio.clients) == 1
     assert bytes(radio.clients[0].written) == query_frame(S1)
+    assert report["transport_diagnostics"]["outer_connect_expired"] is False
+    assert report["transport_diagnostics"]["exchange_expired"] is True
+
+
+async def test_inner_timeout_does_not_claim_outer_timeout_expired(hass, radio):
+    async def connect(*args, **kwargs):
+        raise TimeoutError("PRIVATE_TIMEOUT")
+
+    with patch.object(transport, "establish_connection", connect):
+        report = await execute(hass, radio)
+    assert report["error_category"] == "timeout"
+    assert report["transport_diagnostics"]["outer_connect_expired"] is False
+    assert report["transport_diagnostics"]["errors"]["query"] == ["timeout"]
+    assert "PRIVATE_TIMEOUT" not in str(report)
+
+
+async def test_broken_optional_scanner_metadata_does_not_change_query(hass, radio):
+    class Scanner:
+        def __getattr__(self, name):
+            raise RuntimeError("PRIVATE_SCANNER")
+
+    radio.routes[0].scanner = Scanner()
+    report = await execute(hass, radio)
+    assert report["status"] == "query_complete"
+    assert bytes(radio.clients[0].written) == query_frame(S1)
+    assert radio.clients[0].calls[-2:] == ["stop", "disconnect"]
+    assert "PRIVATE_SCANNER" not in str(report)
 
 
 async def test_helper_cannot_retry_physical_connect():
@@ -447,6 +512,10 @@ async def test_real_helper_uses_runtime_replacement_and_never_reconnects():
     """Exercise the real connector's separate transient-error retry budget."""
     from bleak.exc import BleakError
 
+    from custom_components.aiper_ble_diagnostics.transport_diagnostics import (
+        TransportDiagnostics,
+    )
+
     class Replacement:
         def __init__(self, device, **kwargs):
             assert kwargs["pair"] is False
@@ -458,11 +527,12 @@ async def test_real_helper_uses_runtime_replacement_and_never_reconnects():
             raise BleakError("le-connection-abort-by-local")
 
     owners = []
+    diagnostic = TransportDiagnostics({}, "ha_bluetooth")
     device = BLEDevice(TARGET.address, TARGET.name, {"source": "test_proxy"})
     with patch.object(
         transport.bleak_retry_connector, "BleakClientWithServiceCache", Replacement
     ):
-        cls = transport.single_attempt_client_class()
+        cls = transport.single_attempt_client_class(diagnostic)
         assert issubclass(cls, Replacement)
         with pytest.raises(ProtocolError, match="connection_retry_refused"):
             await transport.bleak_retry_connector.establish_connection(
@@ -476,6 +546,12 @@ async def test_real_helper_uses_runtime_replacement_and_never_reconnects():
             )
     assert len(owners) == 1
     assert owners[0].count == 1
+    assert diagnostic.data["connect_calls_observed"] == 1
+    assert diagnostic.data["retry_calls_refused"] == 1
+    assert diagnostic.data["inner_connect_timeout_seconds"] == (
+        transport.bleak_retry_connector.BLEAK_TIMEOUT
+    )
+    assert diagnostic.data["errors"]["client_connect"] == ["bleak"]
 
 
 async def test_proxy_entry_flow_and_local_action_rejection(hass, radio):

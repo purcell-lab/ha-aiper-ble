@@ -27,6 +27,7 @@ from .protocol import (
     query_telemetry,
     response_evidence,
 )
+from .transport_diagnostics import TransportDiagnostics, number
 
 CONNECT_SECONDS = 30
 EXCHANGE_SECONDS = 15
@@ -54,7 +55,7 @@ def error_category(error):
     return "unexpected"
 
 
-def single_attempt_client_class():
+def single_attempt_client_class(diagnostics=None):
     """Resolve HA's replacement at call time, never capture an unwrapped base.
 
     HA patches bleak_retry_connector during Bluetooth setup. Our component may
@@ -71,9 +72,24 @@ def single_attempt_client_class():
 
         async def connect(self, **kwargs):
             if self.attempted:
+                if diagnostics is not None:
+                    diagnostics.data["retry_calls_refused"] += 1
                 raise ProtocolError("connection_retry_refused")
             self.attempted = True
-            return await super().connect(**kwargs)
+            if diagnostics is not None:
+                diagnostics.data["connect_calls_observed"] += 1
+                diagnostics.data["inner_connect_timeout_seconds"] = number(
+                    kwargs.get("timeout")
+                )
+            try:
+                return await super().connect(**kwargs)
+            except Exception as exc:
+                if diagnostics is not None:
+                    diagnostics.error(exc, "client_connect")
+                raise
+            finally:
+                if diagnostics is not None:
+                    diagnostics.client(self)
 
     return SingleAttemptClient
 
@@ -164,6 +180,22 @@ async def query_once(hass, target, report, query):
         write_attempts=0,
         phase="route_validation",
     )
+    diagnostics = TransportDiagnostics(report, "ha_bluetooth")
+    diagnostics.data["timeouts_seconds"] = {
+        "outer_connect": CONNECT_SECONDS,
+        "exchange": EXCHANGE_SECONDS,
+        "write": 5,
+        "stop_notify": 5,
+        "disconnect": 10,
+    }
+    connect_timeout = exchange_timeout = None
+
+    def phase(name):
+        report["phase"] = name
+        diagnostics.phase(name)
+
+    phase("route_validation")
+    diagnostics.snapshot(hass, target.address, "before_connect")
 
     def notified(_char, data):
         nonlocal overflow
@@ -180,10 +212,10 @@ async def query_once(hass, target, report, query):
 
     try:
         device = validate_routes(hass, target, query)
-        report["phase"] = "connect"
-        async with asyncio.timeout(CONNECT_SECONDS):
+        phase("connect")
+        async with asyncio.timeout(CONNECT_SECONDS) as connect_timeout:
             client = await establish_connection(
-                single_attempt_client_class(),
+                single_attempt_client_class(diagnostics),
                 device,
                 "Aiper BLE",
                 owners=owners,
@@ -191,22 +223,24 @@ async def query_once(hass, target, report, query):
                 pair=False,
                 use_services_cache=False,
             )
-        async with asyncio.timeout(EXCHANGE_SECONDS):
-            report["phase"] = "connected_route_validation"
+        diagnostics.client(client)
+        diagnostics.snapshot(hass, target.address, "after_connect")
+        async with asyncio.timeout(EXCHANGE_SECONDS) as exchange_timeout:
+            phase("connected_route_validation")
             validate_routes(hass, target, query, connected=True)
-            report["phase"] = "endpoint_validation"
+            phase("endpoint_validation")
             char = endpoint(client, query)
-            report["phase"] = "start_notify"
+            phase("start_notify")
             notify_attempted = True
             await client.start_notify(char, notified)
-            report["phase"] = "prewrite_validation"
+            phase("prewrite_validation")
             validate_routes(hass, target, query, connected=True)
             if endpoint(client, query).handle != char.handle:
                 raise ProtocolError("notification_endpoint_changed")
             if not client.is_connected:
                 raise ProtocolError("disconnected_before_query")
             accepting = True
-            report["phase"] = "write"
+            phase("write")
             # Conservative ATT-minimum chunks work across proxy MTU variations.
             for chunk in chunks(query_frame(query)):
                 if overflow:
@@ -219,9 +253,9 @@ async def query_once(hass, target, report, query):
                     5,
                 )
             while True:
-                report["phase"] = "wait_response"
+                phase("wait_response")
                 value = await queue.get()
-                report["phase"] = "decode"
+                phase("decode")
                 if overflow:
                     raise ProtocolError("notification_queue_overflow")
                 if isinstance(value, ProtocolError):
@@ -236,6 +270,7 @@ async def query_once(hass, target, report, query):
                         )
                         return
     except ProtocolError as exc:
+        diagnostics.error(exc, "query")
         report.update(
             status="failed",
             error_code=str(exc),
@@ -243,6 +278,7 @@ async def query_once(hass, target, report, query):
             error_category="protocol",
         )
     except asyncio.CancelledError:
+        diagnostics.data["cancelled"] = True
         report.update(
             status="interrupted",
             failure_stage=report["phase"],
@@ -250,6 +286,7 @@ async def query_once(hass, target, report, query):
         )
         raise
     except Exception as exc:  # noqa: BLE001 - no backend identifiers in diagnostics
+        diagnostics.error(exc, "query")
         report.update(
             status="failed",
             error_code="bluetooth_transport_error",
@@ -258,23 +295,34 @@ async def query_once(hass, target, report, query):
         )
     finally:
         accepting = False
+        diagnostics.data["outer_connect_expired"] = (
+            connect_timeout.expired() if connect_timeout is not None else None
+        )
+        diagnostics.data["exchange_expired"] = (
+            exchange_timeout.expired() if exchange_timeout is not None else None
+        )
         cleanup_failed = False
         for client in owners:
+            diagnostics.client(client)
             if notify_attempted:
+                diagnostics.phase("stop_notify")
                 try:
                     await asyncio.wait_for(client.stop_notify(char), 5)
                     report["notification_cleanup"] = "stop_confirmed"
                 except Exception as exc:  # noqa: BLE001 - still disconnect
+                    diagnostics.error(exc, "stop_notify")
                     report["notification_cleanup"] = "stop_unconfirmed"
                     report["notification_cleanup_error_category"] = error_category(exc)
                     report.setdefault("failure_stage", "stop_notify")
                     cleanup_failed = True
+            diagnostics.phase("disconnect")
             try:
                 await asyncio.wait_for(client.disconnect(), 10)
                 if client.is_connected:
                     raise ProtocolError("disconnect_unconfirmed")
                 report["cleanup"] = "disconnected_confirmed"
             except Exception as exc:  # noqa: BLE001 - suspend rather than retry
+                diagnostics.error(exc, "disconnect")
                 report["cleanup"] = "disconnect_unconfirmed"
                 report["cleanup_error_category"] = error_category(exc)
                 report.setdefault("failure_stage", "disconnect")
@@ -283,3 +331,6 @@ async def query_once(hass, target, report, query):
         report["received_bytes"] = decoder.total_bytes
         if cleanup_failed:
             report["status"] = "cleanup_requires_review"
+        diagnostics.phase("post_cleanup_snapshot")
+        diagnostics.snapshot(hass, target.address, "after_cleanup")
+        diagnostics.finish()
