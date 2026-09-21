@@ -154,10 +154,11 @@ class AiperCoordinator(DataUpdateCoordinator):
             self.async_update_listeners()
 
     async def async_poll_now(self):
-        """Run one existing guarded cycle, not a queued or concurrent probe.
+        """Run one existing guarded cycle immediately, never concurrently.
 
-        An explicit operator request can shorten failure backoff, but never the
-        configured normal interval measured from completion of the last attempt.
+        An explicit operator request runs at once: it clears failure backoff and
+        does not wait for the configured normal interval. The exclusive-cycle
+        guard, suspension, protocol checks and cleanup rules still apply.
         No await precedes _async_update_data's existing runtime task reservation.
         """
         if not self.enabled or self.runtime.closing:
@@ -166,13 +167,6 @@ class AiperCoordinator(DataUpdateCoordinator):
             raise ServiceValidationError("Polling suspended; review diagnostics first.")
         if self.runtime.task and not self.runtime.task.done():
             raise ServiceValidationError("A poll or probe is already running.")
-        now = asyncio.get_running_loop().time()
-        if self.last_attempt_finished is not None:
-            remaining = self.interval - (now - self.last_attempt_finished)
-            if remaining > 0:
-                raise ServiceValidationError(
-                    f"Polling cooldown: retry in {math.ceil(remaining)} seconds."
-                )
         self.next_attempt = 0.0
         try:
             data = await self._async_update_data()

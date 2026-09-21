@@ -304,13 +304,11 @@ async def test_last_successful_poll_hidden_once_polling_is_disabled(hass, local_
     )
 
 
-async def test_minimal_local_poll_now_retains_cooldown(hass, local_radio):
+async def test_minimal_local_poll_now_runs_immediately(hass, local_radio):
     entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
     coordinator = entry.runtime_data.coordinator
-    with pytest.raises(HomeAssistantError, match="cooldown"):
-        await coordinator.async_poll_now()
     assert len(local_radio[0]) == 2
-    coordinator.last_attempt_finished -= 301
+    # Straight after the setup cycle, with no cooldown wait.
     await coordinator.async_poll_now()
     assert len(local_radio[0]) == 4
     assert [item["query_type"] for item in coordinator.last_poll_queries] == [

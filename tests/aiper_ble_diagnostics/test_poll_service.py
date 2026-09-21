@@ -48,12 +48,10 @@ async def test_poll_now_publishes_and_can_shorten_failure_backoff(hass, transpor
     assert len(transport[0]) == 12
 
 
-@pytest.mark.parametrize("gate", ["confirmation", "cooldown", "disabled", "suspended"])
+@pytest.mark.parametrize("gate", ["confirmation", "disabled", "suspended"])
 async def test_poll_now_cannot_bypass_gates(hass, transport, gate):
     entry = await setup(hass)
     coordinator = entry.runtime_data.coordinator
-    if gate != "cooldown":
-        expire_cooldown(coordinator)
     if gate == "disabled":
         coordinator.enabled = False
     if gate == "suspended":
@@ -63,6 +61,17 @@ async def test_poll_now_cannot_bypass_gates(hass, transport, gate):
         await call_poll(hass, entry, confirm=gate != "confirmation")
     assert len(transport[0]) == 4
     assert coordinator.next_attempt == before
+
+
+async def test_poll_now_runs_immediately_after_a_cycle(hass, transport):
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.last_attempt_finished is not None
+    assert (await call_poll(hass, entry))["status"] == "ok"
+    assert len(transport[0]) == 8
+    assert (await call_poll(hass, entry))["status"] == "ok"
+    assert len(transport[0]) == 12
+    assert coordinator.update_interval.total_seconds() == 300
 
 
 async def test_poll_now_failure_invalidates_sensors_and_preserves_backoff(
@@ -81,9 +90,10 @@ async def test_poll_now_failure_invalidates_sensors_and_preserves_backoff(
     assert coordinator.update_interval.total_seconds() == 600
     assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
     assert hass.states.get("sensor.aiper_ble_polling_status").state == "failed"
-    with pytest.raises(HomeAssistantError, match="cooldown"):
-        await call_poll(hass, entry)
-    assert len(transport[0]) == 5
+    # No cooldown: an immediate retry runs and recovers.
+    assert (await call_poll(hass, entry))["status"] == "ok"
+    assert len(transport[0]) == 9
+    assert coordinator.failures == 0
 
 
 async def test_poll_now_cleanup_failure_suspends_and_cannot_be_forced(hass, transport):

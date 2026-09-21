@@ -26,11 +26,11 @@ It does not enable polling, change options, pair, control the robot, issue INFO,
 subscribe to DevInfo or send arbitrary commands.
 
 Polling and exclusive-access authorisation must already be enabled. Disabled,
-unloading, busy or suspended entries are rejected. The action can shorten an
-offline failure backoff, but cannot bypass the configured normal interval
-(at least 300 seconds), measured from completion of the previous attempt.
-An early request raises a cooldown error with seconds remaining rather than
-silently returning cached data. Failed manual attempts retain automatic
+unloading, busy or suspended entries are rejected. The action runs immediately,
+clearing any offline failure backoff; it does not wait for the configured
+normal interval. A request while a cycle is running is rejected rather than
+queued or answered from cached data. The isolated diagnostic actions keep their
+own shared cooldown. Failed manual attempts retain automatic
 backoff; an unconfirmed disconnect still suspends polling. A successful call returns
 only `status` and `last_successful_poll` when a response is requested.
 
