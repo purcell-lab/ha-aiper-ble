@@ -16,7 +16,7 @@ from .const import DOMAIN
 from .datapoints import opinfo_values, timezone
 from .local_bleak import query_once as local_bleak_query_once
 from .local_transport import query_once as local_query_once
-from .protocol import ProtocolError, Query, crc16, query_telemetry
+from .protocol import Control, ProtocolError, Query, crc16, query_telemetry
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_INTERVAL = 300
@@ -92,7 +92,7 @@ def verified_values(response, query):
     values = query_telemetry(response, query)
     if values is None:
         raise ProtocolError("response_query_mismatch")
-    if query.query_type in {"INFO", "WARN"}:
+    if isinstance(query, Control) or query.query_type in {"INFO", "WARN"}:
         return values
     if query.query_type == "S1_INFO":
         return {
@@ -131,6 +131,7 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.last_attempt_finished = None
         self.last_poll_details = {}
         self.last_poll_queries = []
+        self.last_control_result = {"status": "never_run"}
         super().__init__(
             hass,
             LOGGER,

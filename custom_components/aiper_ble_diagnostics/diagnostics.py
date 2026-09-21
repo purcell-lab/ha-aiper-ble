@@ -14,6 +14,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
         {
             "target_config": asdict(runtime.target),
             "last_result": runtime.last_result,
+            "last_control": runtime.coordinator.last_control_result,
             "polling": {
                 "enabled": runtime.coordinator.enabled,
                 "status": runtime.coordinator.status,
@@ -37,7 +38,7 @@ async def async_get_config_entry_diagnostics(hass, entry):
                     ),
                 },
             },
-            "scope": "Selected local BlueZ or HA Bluetooth transport; no control",
+            "scope": "Selected BlueZ or HA Bluetooth; explicit guarded S1 start/stop actions",
         },
         REDACT_KEYS,
     )

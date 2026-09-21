@@ -1,4 +1,4 @@
-"""Experimental standard/S1 codec. No arbitrary commands or device controls.
+"""Experimental standard/S1 codec with fixed queries and opt-in S1 controls.
 
 Evidence: Aiper 3.6.1 build 82 CmdFactory (legacy serializer only).
 See docs/aiper_ble_apk_361_evidence.md. Static evidence is not a wire capture.
@@ -55,6 +55,29 @@ class Query:
             raise ProtocolError("invalid_query_type")
 
 
+@dataclass(frozen=True)
+class Control:
+    """Only explicit S1 start/standby setters, never a toggle or arbitrary AT."""
+
+    action: str
+    allow_missing_advertisement: bool = False
+    checksum_mode: str = "nonempty_crc"
+    write_mode: str = "request"
+    query_type: str = "MODE"
+
+    def __post_init__(self):
+        if self.action not in {"start_cleaning", "stop_cleaning"}:
+            raise ProtocolError("invalid_control")
+        if type(self.allow_missing_advertisement) is not bool:
+            raise ProtocolError("invalid_legacy_probe_confirmation")
+        if (
+            self.checksum_mode != "nonempty_crc"
+            or self.write_mode != "request"
+            or self.query_type != "MODE"
+        ):
+            raise ProtocolError("invalid_control")
+
+
 def crc16(data):
     """Legacy CmdFactory Modbus CRC, NOT the newer SDK's 0x1021 algorithm."""
     crc = 0x9966
@@ -70,14 +93,22 @@ def xor(data):
 
 
 def query_frame(query):
-    """Build only the allowlisted status query, never a generic command."""
-    if not isinstance(query, Query):
+    """Build one fixed query or explicit control, never a generic command."""
+    if not isinstance(query, (Query, Control)):
         raise ProtocolError("not_a_query")
-    command = (
-        {"type": "Machine", "data": {"cmd": f"AT+{query.query_type}?"}}
-        if query.query_type in {"S1_INFO", "INFO", "WARN"}
-        else {"type": "OpInfo", "data": {}}
-    )
+    if isinstance(query, Control):
+        command = {
+            "type": "Machine",
+            "data": {
+                "cmd": "AT+MODE=1" if query.action == "start_cleaning" else "AT+MODE=0"
+            },
+        }
+    else:
+        command = (
+            {"type": "Machine", "data": {"cmd": f"AT+{query.query_type}?"}}
+            if query.query_type in {"S1_INFO", "INFO", "WARN"}
+            else {"type": "OpInfo", "data": {}}
+        )
     if query.query_type != "OpInfo" or query.checksum_mode == "include_empty_crc":
         command["chksum"] = crc16(
             json.dumps(command["data"], separators=(",", ":")).encode()
@@ -273,6 +304,19 @@ def query_telemetry(response, query):
     # Mirror the app's report-before-ack selection without interpreting other ATs.
     report = data.get("report")
     value = report if isinstance(report, str) else data.get("ack")
+    if isinstance(query, Control):
+        # APK receiveResponse accepts a +ok prefix for setters. Deliberately
+        # accept only the bounded bare acknowledgement until wire validation.
+        # A generic +OK carries no command ID and cannot prove physical motion.
+        if not isinstance(value, str):
+            return None
+        if value.lower().startswith("+error"):
+            raise ProtocolError("control_device_error")
+        if value.lower() == "+ok\r\n":
+            return {"acknowledged": True}
+        if value.lower().startswith("+ok"):
+            raise ProtocolError("unsupported_control_ack")
+        return None
     if query.query_type == "WARN":
         if not isinstance(value, str) or not value.startswith("+WARN:"):
             return None

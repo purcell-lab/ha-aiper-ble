@@ -236,7 +236,7 @@ async def test_all_dp_entities_registered_and_updated_from_full_reply(hass, radi
         for state in hass.states.async_all()
         if state.entity_id.startswith("sensor.aiper_ble_")
     ]
-    assert len(states) == 9
+    assert len(states) == 10
     data = entry.runtime_data.coordinator.data
     assert data["temperature_raw"] == 215.0
     assert data["s1_timezone"] == "UTC+10"

@@ -15,6 +15,7 @@ from homeassistant.util import slugify
 from .const import DOMAIN, SIGNAL_RESULT
 from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
 from .device import device_info
+from .s1_states import INFO_STATES, info_state
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -23,6 +24,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             ResultSensor(entry),
             *[TelemetrySensor(entry, key) for key in SENSOR_NAMES],
             PollingStatusSensor(entry),
+            OperatingStateSensor(entry),
         ]
     )
 
@@ -72,6 +74,41 @@ class TelemetrySensor(CoordinatorEntity, SensorEntity):
         return (self.coordinator.data or {}).get(self.key)
 
 
+class OperatingStateSensor(CoordinatorEntity, SensorEntity):
+    """INFO-derived enum, not a claim to reproduce the app's cloud overlays."""
+
+    _attr_name = "Aiper BLE operating state"
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = list(INFO_STATES)
+
+    def __init__(self, entry):
+        super().__init__(entry.runtime_data.coordinator)
+        self._attr_device_info = device_info(entry)
+        self._attr_unique_id = f"{entry.entry_id}_operating_state"
+        self.entity_id = "sensor.aiper_ble_operating_state"
+
+    @property
+    def available(self):
+        return (
+            self.coordinator.enabled
+            and not self.coordinator.runtime.closing
+            and super().available
+            and self.coordinator.data is not None
+            and self.coordinator.data.get("info_status_raw") is not None
+        )
+
+    @property
+    def native_value(self):
+        return info_state(self.coordinator.data or {})
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "evidence": "Android_3.6.1_S1StatusInfo_INFO_subset",
+            "warning_connectivity_and_external_ota_overlays": "not_inferred",
+        }
+
+
 class PollingStatusSensor(CoordinatorEntity, SensorEntity):
     """Explain disabled, failed or suspended polling even with no telemetry."""
 
@@ -104,7 +141,7 @@ class PollingStatusSensor(CoordinatorEntity, SensorEntity):
             "solar_status_mapping": "unverified",
             "wifi_rssi_interpretation": "unverified",
             "battery_source": "INFO_field_2_app_battLevel_validated_0_to_100",
-            "info_status_mode_mapping": "raw_codes_unverified",
+            "info_status_mode_mapping": "Android_3.6.1_S1StatusInfo_INFO_subset",
             "warning_code_mapping": "WARN_signed_int64_fault_meanings_unverified",
             "optional_machine_fields": "unverified_entities_retired",
         }

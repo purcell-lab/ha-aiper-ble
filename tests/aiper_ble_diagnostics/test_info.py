@@ -149,7 +149,11 @@ async def test_only_useful_defaults_and_private_field_presence(hass, transport):
         for item in entries
         if item.disabled_by is None
     }
-    assert enabled == DEFAULT_ENABLED | {"polling_status", "discovery_result"}
+    assert enabled == DEFAULT_ENABLED | {
+        "polling_status",
+        "discovery_result",
+        "operating_state",
+    }
     battery = hass.states.get("sensor.aiper_ble_battery")
     assert battery.attributes["device_class"] == "battery"
     assert battery.attributes["unit_of_measurement"] == "%"

@@ -1,6 +1,6 @@
 # Aiper Surfer S1 BLE: discovered protocol and validation status
 
-Updated 20 September 2026 for integration version 0.9.0. This is a limited,
+Updated 22 September 2026 (AEST) for integration version 0.10.0. This is a limited,
 evidence-led description of the legacy Surfer S1 telemetry path, not a universal
 Aiper protocol specification or an official vendor document.
 
@@ -94,10 +94,11 @@ non-reflected `0x1021` algorithm must not be substituted.
 
 ## Supported status requests
 
-Only the following two fixed requests are used by recurring polling.
-No provisioning, movement, cleaning, mode-setting or arbitrary AT command is
-exposed. Request writes and notification subscriptions still change connection
-state; “telemetry-only” does not mean no GATT writes occur.
+Direct-local recurring polling uses S1_INFO and INFO. HA-routed polling also
+uses OpInfo and WARN. Polling never sends cleaning commands; the separately
+confirmed [start/standby actions](s1_states_and_controls.md) are the only
+control setters. No provisioning or arbitrary AT API is exposed.
+Request writes and notification subscriptions still change connection state.
 
 ### S1_INFO
 
@@ -185,7 +186,8 @@ CRLF termination. The last two fields are validated as integers but are neither
 interpreted nor published as sensors. Their meanings remain unknown.
 A battery outside 0-100
 becomes unavailable, without clamping or preventing valid status/mode values
-from being used. Status and mode remain raw codes. Other field counts or
+from being used. Raw status and mode are retained alongside the app-derived
+[operating-state sensor](s1_states_and_controls.md#home-assistant-representation). Other field counts or
 malformed matching responses fail closed. Report takes precedence over ack,
 as in the existing S1_INFO parser.
 
@@ -238,9 +240,8 @@ still cause a CCCD write by the Bluetooth stack.
 
 ## Published data points and uncertainty
 
-The component defines 24 telemetry sensors and three integration-status sensors.
-On new installations, six telemetry sensors and all three status sensors are
-enabled by default. The remaining four diagnostics are disabled by default.
+The component defines 14 sensors, including the new INFO-derived operating
+state. Ten are enabled by default; four optional diagnostics are disabled.
 Optional fields are unavailable when absent or invalid; they are not
 filled with zero, inferred from another query or dynamically generated from
 arbitrary response keys.
@@ -248,8 +249,9 @@ arbitrary response keys.
 | Reply field | Published value | Evidence and interpretation |
 | --- | --- | --- |
 | INFO third field | Battery, % | Live 93; app `battLevel` and BatteryView 0-100 scale; app comparison pending |
-| INFO first field | Operating status raw | Live 0; app-derived position; enum meaning unverified |
-| INFO second field | Operating mode raw | Live 0; app-derived position; enum meaning unverified |
+| INFO first field | Operating status raw | Live 0; app-derived state predicates documented separately |
+| INFO second field | Operating mode raw | Live 0; app-derived mode 8/9 predicates; other mode names unknown |
+| INFO status/mode/battery | Operating state enum | App-derived subset; no cloud connectivity, warning or external OTA overlays |
 | WARN first field | Warning code raw | Live 0; app-derived signed int64; fault meanings unverified |
 | S1_INFO first field | Temperature, °C | Observed numeric reply; app-derived scale ÷10; physical sensor location unknown |
 | S1_INFO first field | Temperature raw | Observed |
@@ -260,7 +262,7 @@ arbitrary response keys.
 | OpInfo `bat/status/link` and 11 nested `Machine` candidates | No entities | Speculative, absent from observed S1 reply; retired rather than presented as supported sensors |
 
 The other three sensors show last successful poll, polling status and the manual
-diagnostic result. All 13 retained entities are grouped under one integration-scoped HA
+diagnostic result. All 14 entities are grouped under one integration-scoped HA
 device, without automatically merging into a cloud integration's device.
 Retained entity unique IDs remain unchanged. Config-entry minor version 3
 removes exactly the 14 retired registry entries, including renamed and disabled
@@ -347,5 +349,6 @@ substitute for physical tests across firmware versions.
 Open questions include physical temperature location, solar enum meanings,
 Wi-Fi sentinel meaning, availability and units of battery fields, spontaneous
 notifications in other robot states, and safe handling of incomplete proxy
-identity metadata. ECDH, other models, provisioning and robot controls remain
-outside this integration's supported scope.
+identity metadata. ECDH, other models and provisioning remain outside scope.
+The new S1 start/standby setters still require live acknowledgement and physical
+behaviour validation; see [states and controls](s1_states_and_controls.md).
