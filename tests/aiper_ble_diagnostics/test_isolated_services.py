@@ -81,7 +81,7 @@ async def test_exact_production_proxy_request(hass, radio, service, query_type):
     assert "sn" not in result["values"]
 
 
-async def test_cooldown_is_shared_by_all_four_actions_and_poll_now(hass, transport):
+async def test_cooldown_is_shared_by_all_four_actions_not_poll_now(hass, transport):
     entry = await setup(hass, {})
     coordinator = entry.runtime_data.coordinator
     await call_query(hass, entry, "query_s1_info")
@@ -89,13 +89,16 @@ async def test_cooldown_is_shared_by_all_four_actions_and_poll_now(hass, transpo
         with pytest.raises(HomeAssistantError, match="cooldown"):
             await call_query(hass, entry, service)
     assert len(transport[0]) == 1
+    # An explicit poll runs immediately; it never waits on the isolated cooldown.
     coordinator.enabled = True
-    with pytest.raises(HomeAssistantError, match="cooldown"):
-        await coordinator.async_poll_now()
+    assert (await coordinator.async_poll_now())["status"] == "ok"
+    assert len(transport[0]) == 5
     coordinator.enabled = False
+    with pytest.raises(HomeAssistantError, match="cooldown"):
+        await call_query(hass, entry, "query_info")
     expire_cooldown(coordinator)
     assert (await call_query(hass, entry, "query_info"))["values"]["battery"] == 73
-    assert len(transport[0]) == 2
+    assert len(transport[0]) == 6
 
 
 @pytest.mark.parametrize("field", CONFIRMS)

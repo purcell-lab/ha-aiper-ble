@@ -25,8 +25,8 @@ and both connections must have confirmed notification stop and disconnection,
 before the coordinator publishes a new cycle.
 
 Failures retain the existing backoff and suspension rules. No cleanup-timeout
-recovery experiment is included. The shared cooldown and exclusive-operation
-guard also apply to manual `poll_now`.
+recovery experiment is included. The exclusive-operation guard also applies to
+manual `poll_now`, which runs immediately without the isolated actions' cooldown.
 
 Battery and temperature keep their existing entity IDs. Other validated scalar
 fields already contained in S1_INFO and INFO remain available without extra

@@ -103,7 +103,7 @@
     },
     "poll_now": {
       "name": "Poll Aiper telemetry now",
-      "description": "Run one guarded S1_INFO, OpInfo, INFO and WARN cycle through the selected transport and update sensors. Polling must already be enabled and authorised. May shorten offline failure backoff, but cannot bypass the configured normal interval, an active probe, suspension, protocol checks or disconnect cleanup. No robot controls.",
+      "description": "Run one guarded S1_INFO, OpInfo, INFO and WARN cycle through the selected transport and update sensors. Polling must already be enabled and authorised. Runs immediately, clearing any offline failure backoff and without waiting for the configured normal interval. Cannot bypass an active probe, suspension, protocol checks or disconnect cleanup. No robot controls.",
       "fields": {
         "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE Diagnostics entry."},
         "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed and other BLE clients are idle."}

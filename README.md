@@ -166,10 +166,11 @@ data:
 ```
 
 Choose the config entry with the selector in Developer Tools > Actions.
-Polling must already be enabled and authorised. The action can shorten offline
-failure backoff after the configured normal interval has elapsed, but cannot
-bypass its minimum 300-second gap, an active query, suspension or identity checks.
-An early request raises a cooldown error with seconds remaining.
+Polling must already be enabled and authorised. The action runs immediately:
+it clears offline failure backoff and does not wait for the configured normal
+interval. It cannot bypass an active query, suspension or identity checks; a
+request while a cycle is running is rejected rather than queued. The next
+automatic cycle is scheduled one normal interval after the manual one finishes.
 
 With a response requested, the action returns `status` and
 `last_successful_poll`. It updates the same sensors as automatic polling.
