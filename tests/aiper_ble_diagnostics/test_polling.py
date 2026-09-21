@@ -168,7 +168,9 @@ async def test_device_carries_bluetooth_connection_for_device_page(hass, transpo
     from homeassistant.helpers import device_registry as dr
 
     entry = await setup(hass, {})
-    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, TARGET.address)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, TARGET.address), entry.entry_id
+    )
     assert device is not None
     assert (dr.CONNECTION_BLUETOOTH, TARGET.address) in device.connections
     assert device.manufacturer == "Aiper"
