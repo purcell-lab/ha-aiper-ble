@@ -233,7 +233,10 @@ async def test_one_device_all_entities_stable_after_reload(hass, transport):
     assert device.manufacturer == "Aiper"
     assert device.model == "Surfer S1"
     assert device.name == "Aiper Surfer S1 (BLE)"
-    assert not device.connections  # No speculative merge with the cloud integration.
+    # The Bluetooth connection drives HA's device-page Bluetooth section. Device
+    # lookups are scoped per config entry, so it cannot merge this device with
+    # the separate cloud integration's device.
+    assert device.connections == {(dr.CONNECTION_BLUETOOTH, TARGET.address)}
     records = er.async_entries_for_config_entry(entities, entry.entry_id)
     assert len(records) == 13
     assert {r.device_id for r in records} == {device.id}

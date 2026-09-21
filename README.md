@@ -56,8 +56,11 @@ disabling proxies or changing the production polling transport.
 - Direct local BlueZ polls only fixed `S1_INFO` and `INFO` requests for temperature
   and SOC. The HA Bluetooth path retains its four-query cycle (`S1_INFO`,
   `OpInfo`, `INFO`, `WARN`); no transport is switched automatically.
-- Groups entities under one **Aiper Surfer S1 (BLE)** device, with nine enabled
-  by default: temperature, battery, raw operating status/mode, raw warning code, raw solar status,
+- Groups entities under one **Aiper Surfer S1 (BLE)** device that carries the
+  robot's Bluetooth address as a registry connection, so the HA device page
+  shows its Bluetooth section (last seen via which adapter or proxy, signal
+  strength). Downloaded integration diagnostics still redact the address.
+  Nine entities are enabled by default: temperature, battery, raw operating status/mode, raw warning code, raw solar status,
   last successful poll, polling status and manual discovery result. In direct-local
   mode, warning and OpInfo-only entities are unavailable because those queries
   are no longer polled; entity registry entries are not deleted.
