@@ -17,6 +17,7 @@ from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .const import DOMAIN, SIGNAL_RESULT
+from .controls import CONTROL_SERVICES, async_control
 from .coordinator import (
     ISOLATED_QUERIES,
     LOCAL_BLEAK_SERVICE,
@@ -69,6 +70,22 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise ServiceValidationError("Integration is unloading.")
         if runtime.task and not runtime.task.done():
             raise ServiceValidationError("A probe is already running.")
+        if call.service in CONTROL_SERVICES:
+            if not all(
+                call.data.get(key) is True
+                for key in ("confirm_app_closed", "confirm_safe_to_move")
+            ):
+                raise ServiceValidationError(
+                    "Close other BLE clients and confirm robot in water, unplugged, "
+                    "no people in pool, no update in progress and safe to operate."
+                )
+            if runtime.coordinator is None:
+                raise ServiceValidationError("Polling coordinator is unavailable.")
+            try:
+                result = await async_control(runtime.coordinator, call.service)
+            finally:
+                async_dispatcher_send(hass, SIGNAL_RESULT, entry.entry_id)
+            return result if call.return_response else None
         if call.service in (
             *ISOLATED_QUERIES,
             LOCAL_BLEAK_SERVICE,
@@ -231,6 +248,20 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         return report if call.return_response else None
 
     schema = {vol.Required("entry_id"): str}
+    for service in CONTROL_SERVICES:
+        hass.services.async_register(
+            DOMAIN,
+            service,
+            handle,
+            schema=vol.Schema(
+                {
+                    **schema,
+                    vol.Required("confirm_app_closed"): cv.boolean,
+                    vol.Required("confirm_safe_to_move"): cv.boolean,
+                }
+            ),
+            supports_response=SupportsResponse.OPTIONAL,
+        )
     for service in (*ISOLATED_QUERIES, LOCAL_BLEAK_SERVICE, PROXY_TRACE_SERVICE):
         hass.services.async_register(
             DOMAIN,

@@ -1,4 +1,4 @@
-"""One fixed opt-in status exchange on a pinned S1, without retry or controls."""
+"""One fixed opt-in query or S1 control exchange on a pinned S1, without retry."""
 
 import asyncio
 

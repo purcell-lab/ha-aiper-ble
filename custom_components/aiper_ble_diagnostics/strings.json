@@ -19,17 +19,17 @@
     "step": {
       "init": {
         "title": "Guarded Surfer S1 polling",
-        "description": "Experimental polling using the selected transport: direct local BlueZ when Use saved local adapter is enabled, otherwise HA Bluetooth with active proxies. Local mode never falls back to a proxy. Enabling polling authorises recurring S1_INFO, OpInfo, INFO and WARN requests, notification subscriptions and disconnections, including after HA restarts. Keep other clients idle; disable polling and wait for cleanup before using the app. No pairing or robot control commands. Temperature location and status/mode/solar/warning meanings remain unverified. INFO battery uses the app-derived 0-100 scale. Failures back off; unsafe cleanup suspends polling.",
+        "description": "Experimental polling using the selected transport: direct local BlueZ when Use saved local adapter is enabled, otherwise HA Bluetooth with active proxies. Local mode never falls back to a proxy. Local polling uses S1_INFO and INFO; HA polling also uses OpInfo and WARN. Enabling polling authorises recurring telemetry writes, subscriptions and disconnects, including after restart, but never cleaning commands. Start/stop are separate actions requiring per-call safety confirmation. Keep other clients idle. INFO state labels are app-derived; temperature location, solar and fault meanings remain unverified. Failures back off; unsafe cleanup suspends polling.",
         "data": {
           "polling_enabled": "Enable recurring BLE status queries",
           "poll_interval": "Successful poll interval in seconds (300 to 3600)",
           "confirm_exclusive_access": "I authorise recurring queries and will keep other BLE clients idle",
-          "allow_missing_advertisement": "Authorise S1 legacy queries when advertisement evidence is missing",
+          "allow_missing_advertisement": "Allow the legacy S1 protocol when advertisement evidence is missing",
           "use_local_adapter": "Use saved local adapter directly (no proxies or Bleak)"
         },
         "data_description": {
-          "allow_missing_advertisement": "Persistent exception, unlike the one-shot action confirmation. ECDH hints, key-exchange services, malformed advertisements and identity or endpoint changes still veto polling.",
-          "use_local_adapter": "Applies to polling and all four isolated query actions. Requires saved local adapter metadata. Uses direct BlueZ D-Bus with no automatic transport fallback. Disable recurring polling before isolated tests."
+          "allow_missing_advertisement": "Persistent protocol exception for polling and explicitly requested control actions; not permission to move the robot. ECDH hints, key-exchange services, malformed advertisements and identity or endpoint changes still veto the operation.",
+          "use_local_adapter": "Applies to polling, isolated queries and explicit start/stop actions. Requires saved local adapter metadata. Uses direct BlueZ D-Bus with no automatic transport fallback. Disable recurring polling before isolated tests."
         }
       }
     },
@@ -39,6 +39,24 @@
     }
   },
   "services": {
+    "start_cleaning": {
+      "name": "Start S1 cleaning (experimental)",
+      "description": "Fresh INFO and WARN checks, one AT+MODE=1 setter and one INFO readback over the selected BLE transport. No retries, toggle, cloud control or transport fallback. Requires explicit physical safety confirmation. APK-derived command; not yet live-validated.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Surfer S1 entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the Aiper app is closed and other BLE clients are idle."},
+        "confirm_safe_to_move": {"name": "Robot safe to operate", "description": "Confirm the robot is in water, unplugged, no people are in the pool, no firmware update is running, and this movement command is authorised."}
+      }
+    },
+    "stop_cleaning": {
+      "name": "Stop S1 cleaning (experimental)",
+      "description": "One AT+MODE=0 standby setter and one INFO readback over the selected BLE transport. No retries and no automatic poll. This is not an emergency stop, power-off, return-to-dock or pause/resume command. APK-derived command; not yet live-validated.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Surfer S1 entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the Aiper app is closed and other BLE clients are idle."},
+        "confirm_safe_to_move": {"name": "Robot safe to operate", "description": "Confirm the robot is in water, unplugged, no people are in the pool, no firmware update is running, and this standby command is authorised. If BLE fails, use the physical controls."}
+      }
+    },
     "query_s1_info": {
       "name": "Query S1_INFO once via selected transport",
       "description": "Bisection only: disable recurring polling first. One fixed S1_INFO request over the selected production transport; verified temperature and solar scalars returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries or controls.",

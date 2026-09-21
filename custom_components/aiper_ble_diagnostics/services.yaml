@@ -1,3 +1,37 @@
+start_cleaning:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: aiper_ble_diagnostics
+    confirm_app_closed:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_safe_to_move:
+      required: true
+      default: false
+      selector:
+        boolean:
+stop_cleaning:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: aiper_ble_diagnostics
+    confirm_app_closed:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_safe_to_move:
+      required: true
+      default: false
+      selector:
+        boolean:
 query_s1_info:
   fields:
     entry_id:

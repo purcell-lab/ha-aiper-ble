@@ -1,11 +1,18 @@
 # Aiper BLE for Home Assistant
 
-Experimental local Bluetooth telemetry for the Aiper Surfer S1, with Home
+Experimental local Bluetooth telemetry and guarded cleaning actions for the Aiper Surfer S1, with Home
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.9.11.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.10.0.** The integration domain remains `aiper_ble_diagnostics` for
 compatibility with existing installations.
+
+Adds an INFO-derived operating-state enum sensor and explicit `start_cleaning`
+and `stop_cleaning` BLE actions. Actions require per-call safety confirmation,
+share the polling lock, never retry and verify a separate INFO readback.
+These commands are traced from Android 3.6.1 but are not yet live-validated.
+They are never sent automatically by polling. See
+[S1 states and controls](docs/s1_states_and_controls.md) before use.
 
 Direct-local polling now requests only `S1_INFO` (temperature) and `INFO`
 (battery state of charge). It no longer connects for `OpInfo` or `WARN`.
@@ -60,7 +67,7 @@ disabling proxies or changing the production polling transport.
   robot's Bluetooth address as a registry connection, so the HA device page
   shows its Bluetooth section (last seen via which adapter or proxy, signal
   strength). Downloaded integration diagnostics still redact the address.
-  Nine entities are enabled by default: temperature, battery, raw operating status/mode, raw warning code, raw solar status,
+  Ten entities are enabled by default: temperature, battery, decoded operating state, raw operating status/mode, raw warning code, raw solar status,
   last successful poll, polling status and manual discovery result. In direct-local
   mode, warning and OpInfo-only entities are unavailable because those queries
   are no longer polled; entity registry entries are not deleted.
@@ -81,9 +88,11 @@ disabling proxies or changing the production polling transport.
 
 Temperature sensor location is unverified. Battery comes only from INFO field 2,
 using the app's 0-100 battery-level scale, not from speculative `bat`/`cap` fields.
-Status/mode/solar/warning codes and Wi-Fi RSSI sentinels are not interpreted.
-No pairing, provisioning, cleaning controls, arbitrary commands or cloud API is
-implemented. See the [DP validation matrix](docs/info_dp_validation.md) and
+Status and special-mode predicates are app-derived; other mode values, solar,
+warning codes and Wi-Fi RSSI sentinels remain uninterpreted.
+No pairing, provisioning, arbitrary commands or cloud API is implemented.
+The only control setters are explicit S1 start/standby actions.
+See the [DP validation matrix](docs/info_dp_validation.md) and
 [additional APK query assessment](docs/apk_query_catalog.md).
 
 ## Requirements and safety

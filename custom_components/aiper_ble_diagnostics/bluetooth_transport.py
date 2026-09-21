@@ -1,6 +1,6 @@
-"""Fixed queries over HA's shared Bluetooth routing, including active proxies.
+"""Fixed queries/explicit S1 controls over HA routing, including active proxies.
 
-No private scanner, adapter pinning, pairing, controls or query retries.
+No private scanner, adapter pinning, pairing or command retries.
 Remote backends do not expose BlueZ pairing/trust/notification ownership
 metadata. Exclusive access remains an explicit operator prerequisite.
 """

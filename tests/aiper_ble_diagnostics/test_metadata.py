@@ -26,6 +26,8 @@ def test_service_descriptions_and_translation_match():
     assert (
         set(services)
         == {
+            "start_cleaning",
+            "stop_cleaning",
             "query_s1_info",
             "query_opinfo",
             "query_opinfo_local_bleak",

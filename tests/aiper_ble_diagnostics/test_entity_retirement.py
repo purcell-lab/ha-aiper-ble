@@ -124,7 +124,7 @@ async def test_retire_exact_records_preserve_other_entries_and_reload(
     assert not entry.runtime_data.coordinator.enabled
 
 
-async def test_fresh_install_has_thirteen_entities_and_no_retired_records(hass):
+async def test_fresh_install_has_fourteen_entities_and_no_retired_records(hass):
     entry = MockConfigEntry(
         domain=DOMAIN, data=asdict(TARGET), version=1, minor_version=3
     )
@@ -133,9 +133,13 @@ async def test_fresh_install_has_thirteen_entities_and_no_retired_records(hass):
     await hass.async_block_till_done()
     items = er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
     keys = {item.unique_id.removeprefix(f"{entry.entry_id}_") for item in items}
-    assert keys == set(SENSOR_NAMES) | {"discovery_result", "polling_status"}
-    assert len(items) == 13
-    assert sum(item.disabled_by is None for item in items) == 9
+    assert keys == set(SENSOR_NAMES) | {
+        "discovery_result",
+        "polling_status",
+        "operating_state",
+    }
+    assert len(items) == 14
+    assert sum(item.disabled_by is None for item in items) == 10
     assert not keys.intersection(RETIRED_ENTITY_KEYS)
 
 

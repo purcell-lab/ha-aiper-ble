@@ -65,6 +65,11 @@ fallback queries or state changes are performed for them. Factory restore,
 firmware update, provisioning, setters, cleaning/motion controls and warning
 clearing remain outside this integration's scope.
 
+Version 0.10.0 exception: two explicit S1 cleaning/standby setters have now
+been independently traced and implemented behind per-call safety confirmations.
+They are not telemetry queries and remain unverified on live hardware.
+See [S1 state enumeration and controls](s1_states_and_controls.md).
+
 ## Promotion criteria
 
 A further query needs a model-specific request and response trace, a bounded
