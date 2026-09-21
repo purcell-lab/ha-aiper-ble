@@ -163,6 +163,20 @@ async def setup(hass, options=None):
     return entry
 
 
+async def test_device_carries_bluetooth_connection_for_device_page(hass, transport):
+    """HA's device page Bluetooth section keys off the registry connection."""
+    from homeassistant.helpers import device_registry as dr
+
+    entry = await setup(hass, {})
+    device = dr.async_get(hass).async_get_device(identifiers={(DOMAIN, TARGET.address)})
+    assert device is not None
+    assert (dr.CONNECTION_BLUETOOTH, TARGET.address) in device.connections
+    assert device.manufacturer == "Aiper"
+    # The address reaches the registry only; integration diagnostics stay redacted.
+    diagnostics = await async_get_config_entry_diagnostics(hass, entry)
+    assert TARGET.address not in json.dumps(diagnostics)
+
+
 @pytest.mark.parametrize(
     "options", [{}, {"polling_enabled": True}, {"confirm_exclusive_access": True}]
 )
