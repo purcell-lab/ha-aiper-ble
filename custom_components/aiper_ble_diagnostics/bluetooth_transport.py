@@ -364,6 +364,24 @@ async def query_once(
                 cleanup_failed = True
         report["notification_count"] = decoder.notifications
         report["received_bytes"] = decoder.total_bytes
+        if (
+            report.get("notification_cleanup") == "stop_unconfirmed"
+            and report.get("cleanup") == "disconnected_confirmed"
+        ):
+            # The HA-managed client owns this subscription alone, so a confirmed
+            # disconnect releases it even when the unsubscribe on a dead link
+            # failed. Fail the cycle with backoff instead of suspending polling.
+            report["notification_cleanup"] = "released_by_disconnect"
+            cleanup_failed = False
+            if report.get("status") == "query_complete":
+                report.update(
+                    status="failed",
+                    error_code="notification_cleanup_unconfirmed",
+                    failure_stage="stop_notify",
+                    error_category=report.get(
+                        "notification_cleanup_error_category", "transport"
+                    ),
+                )
         if cleanup_failed:
             report["status"] = "cleanup_requires_review"
         diagnostics.phase("post_cleanup_snapshot")

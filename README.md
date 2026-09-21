@@ -102,8 +102,11 @@ This is not write-free passive reception. It never sends robot control commands.
 One cycle contains four bounded connections, one for each fixed request.
 Readings publish only after matching, CRC-verified replies and confirmed cleanup.
 Failures back off; unsafe cleanup or unsupported security/protocol evidence
-suspends polling. Review the cause before reloading or restarting, which clears
-volatile suspension. Remote proxies cannot expose all local BlueZ ownership
+suspends polling. On the HA-managed route a confirmed disconnect releases the
+client's own notification subscription, so a failed unsubscribe on a link that
+has already dropped fails that cycle with backoff instead of suspending. An
+unconfirmed disconnect still suspends. Review the cause before reloading or
+restarting, which clears volatile suspension. Remote proxies cannot expose all local BlueZ ownership
 metadata, so exclusive access remains an operator responsibility.
 
 Read the [full safety and diagnostics guide](docs/aiper_ble_diagnostics.md)

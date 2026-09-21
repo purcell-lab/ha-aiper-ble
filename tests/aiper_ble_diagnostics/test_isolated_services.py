@@ -162,6 +162,16 @@ async def test_transport_failure_cleanup_and_privacy(hass, radio, failure):
         assert result["failure_stage"] == "connect"
         assert not coordinator.suspended
         assert result["write_attempts"] == 0
+    elif failure == "stop":
+        # A confirmed disconnect releases the subscription: failed, not suspended.
+        assert result["status"] == "failed"
+        assert result["error_code"] == "notification_cleanup_unconfirmed"
+        assert result["failure_stage"] == "stop_notify"
+        assert result["notification_cleanup"] == "released_by_disconnect"
+        assert result["cleanup"] == "disconnected_confirmed"
+        assert not coordinator.suspended
+        with pytest.raises(HomeAssistantError, match="cooldown"):
+            await call_query(hass, entry)
     else:
         assert result["status"] == "suspended"
         assert result["error_code"] == "cleanup_requires_review"
