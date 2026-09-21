@@ -31,7 +31,7 @@ offline failure backoff, but cannot bypass the configured normal interval
 (at least 300 seconds), measured from completion of the previous attempt.
 An early request raises a cooldown error with seconds remaining rather than
 silently returning cached data. Failed manual attempts retain automatic
-backoff; uncertain cleanup still suspends polling. A successful call returns
+backoff; an unconfirmed disconnect still suspends polling. A successful call returns
 only `status` and `last_successful_poll` when a response is requested.
 
 ## Version 0.8.1 failure reporting
@@ -112,8 +112,13 @@ not the older diagnostic experiments.
   fixed-frame requests, no application retry, and no startup-notification reuse.
 - Client references are retained before connect returns, allowing bounded
   cleanup on connection failure, deadline expiry and unload cancellation.
-- Stop-notify deadline 5 seconds; disconnect deadline 10 seconds. Unconfirmed
-  cleanup suspends polling. The existing 300-second minimum interval, backoff,
+- Stop-notify deadline 5 seconds; disconnect deadline 10 seconds. An unconfirmed
+  disconnect suspends polling. A failed stop-notify followed by a confirmed
+  disconnect is recorded as `notification_cleanup: released_by_disconnect`:
+  the HA-managed client held that subscription alone and the closed link ends
+  it, so the cycle fails with backoff (`notification_cleanup_unconfirmed` when
+  the query itself had completed) rather than suspending. This was observed on
+  a proxy route whose link dropped right after connecting. The existing 300-second minimum interval, backoff,
   mutual exclusion and CRC-checked atomic sensor publication remain.
 
 Remote Bleak backends do **not** expose all local BlueZ metadata. The old

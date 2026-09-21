@@ -377,10 +377,16 @@ async def test_failures_cleanup_and_suspension(hass, radio, stage):
     assert not coordinator.last_update_success
     assert len(radio.clients) == 1
     assert "disconnect" in radio.clients[0].calls
-    assert coordinator.suspended is (stage in {"stop", "disconnect"})
+    # Only an unconfirmed disconnect leaves a possibly live connection behind.
+    assert coordinator.suspended is (stage == "disconnect")
     assert "PRIVATE_BACKEND_IDENTIFIER" not in str(coordinator.error_code)
     details = coordinator.last_poll_details
     assert details["query_type"] == "S1_INFO"
+    if stage == "stop":
+        assert coordinator.error_code == "notification_cleanup_unconfirmed"
+        assert details["notification_cleanup"] == "released_by_disconnect"
+        assert details["cleanup"] == "disconnected_confirmed"
+        assert coordinator.update_interval is not None
     assert (
         details["failure_stage"]
         == {
@@ -398,6 +404,60 @@ async def test_failures_cleanup_and_suspension(hass, radio, stage):
     assert "protocol_response" not in str(details)
     assert TARGET.address not in str(diagnostic)
     assert TARGET.name not in str(diagnostic)
+
+
+async def test_dead_link_after_connect_fails_cycle_without_suspension(hass, radio):
+    """Observed at 08:32 AEST on 22 Sep 2026: connect, start_notify failure,
+    stop_notify failure on the dead link, confirmed disconnect."""
+
+    def break_link(client):
+        client.failure = "start"
+
+        async def stop_notify(char):
+            client.calls.append("stop")
+            raise RuntimeError("PRIVATE_BACKEND_IDENTIFIER")
+
+        client.stop_notify = stop_notify
+
+    radio.mutations.append(break_link)
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    assert not coordinator.last_update_success
+    assert coordinator.suspended is False
+    assert coordinator.status == "failed"
+    assert coordinator.error_code == "bluetooth_transport_error"
+    assert coordinator.update_interval is not None
+    details = coordinator.last_poll_details
+    assert details["failure_stage"] == "start_notify"
+    assert details["notification_cleanup"] == "released_by_disconnect"
+    assert details["notification_cleanup_error_category"] == "unexpected"
+    assert details["cleanup"] == "disconnected_confirmed"
+    assert radio.clients[0].calls[-2:] == ["stop", "disconnect"]
+    assert not radio.clients[0].is_connected
+    assert "PRIVATE_BACKEND_IDENTIFIER" not in str(details)
+
+
+async def test_unconfirmed_disconnect_after_stop_failure_still_suspends(hass, radio):
+    def break_cleanup(client):
+        client.failure = "stop"
+
+        async def disconnect():
+            client.calls.append("disconnect")
+            raise RuntimeError("PRIVATE_BACKEND_IDENTIFIER")
+
+        client.disconnect = disconnect
+
+    radio.mutations.append(break_cleanup)
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.suspended is True
+    assert coordinator.status == "suspended"
+    assert coordinator.error_code == "cleanup_requires_review"
+    assert coordinator.update_interval is None
+    details = coordinator.last_poll_details
+    assert details["notification_cleanup"] == "stop_unconfirmed"
+    assert details["cleanup"] == "disconnect_unconfirmed"
+    assert "PRIVATE_BACKEND_IDENTIFIER" not in str(details)
 
 
 @pytest.mark.parametrize("stage", ["connect", "start", "write"])
