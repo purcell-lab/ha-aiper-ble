@@ -1,17 +1,20 @@
 """Bounded, passive transport observations; never export backend prose."""
 
 import math
+from collections.abc import Callable
 from datetime import UTC, datetime
 from time import monotonic
+from typing import Any
 
 from bleak.exc import BleakError
 from bluetooth_data_tools import monotonic_time_coarse
 from homeassistant.components import bluetooth
+from homeassistant.core import HomeAssistant
 
 MAX_ROUTES = 16
 
 
-def optional(reader):
+def optional(reader: Callable[[], Any]) -> Any:
     """Version-sensitive metadata must not affect transport or safety gates."""
     try:
         return reader()
@@ -19,15 +22,21 @@ def optional(reader):
         return None
 
 
-def number(value, minimum=0, maximum=1e9):
+def number(
+    value: object, minimum: float = 0, maximum: float = 1e9
+) -> int | float | None:
     """Accept finite built-in numbers only, never backend string representations."""
-    if type(value) in (int, float) and minimum <= value <= maximum:
-        if math.isfinite(value):
-            return value
+    if (
+        isinstance(value, (int, float))
+        and type(value) in (int, float)
+        and minimum <= value <= maximum
+        and math.isfinite(value)
+    ):
+        return value
     return None
 
 
-def exception_kind(error):
+def exception_kind(error: BaseException) -> str:
     """Return a fixed family, including for untrusted custom subclasses."""
     for cls, name in (
         (TimeoutError, "timeout"),
@@ -43,11 +52,11 @@ def exception_kind(error):
 class TransportDiagnostics:
     """One query's observation buffer; no active scans, logs or BLE operations."""
 
-    def __init__(self, report, transport):
+    def __init__(self, report: dict[str, Any], transport: str) -> None:
         self.started = self.phase_started = monotonic()
-        self.phase_name = None
-        self.sources = {}
-        self.data = report["transport_diagnostics"] = {
+        self.phase_name: str | None = None
+        self.sources: dict[str, str] = {}
+        self.data: dict[str, Any] = {
             "schema_version": 1,
             "started_at": datetime.now(UTC).isoformat(),
             "requested_transport": transport,
@@ -58,8 +67,9 @@ class TransportDiagnostics:
             "connect_calls_observed": 0,
             "retry_calls_refused": 0,
         }
+        report["transport_diagnostics"] = self.data
 
-    def phase(self, name):
+    def phase(self, name: str | None) -> None:
         now = monotonic()
         if self.phase_name is not None:
             timings = self.data["phase_ms"]
@@ -68,7 +78,7 @@ class TransportDiagnostics:
             )
         self.phase_started, self.phase_name = now, name
 
-    def route_id(self, scanner):
+    def route_id(self, scanner: Any) -> str | None:
         source = optional(lambda: scanner.source)
         if type(source) is not str or not source:
             return None
@@ -76,7 +86,7 @@ class TransportDiagnostics:
             self.sources[source] = f"route_{len(self.sources) + 1}"
         return self.sources.get(source)
 
-    def snapshot(self, hass, address, stage):
+    def snapshot(self, hass: HomeAssistant, address: str, stage: str) -> None:
         """Read cached per-target metadata only; candidate order is not selection."""
         routes = optional(
             lambda: bluetooth.async_scanner_devices_by_address(
@@ -86,7 +96,7 @@ class TransportDiagnostics:
         if not isinstance(routes, (list, tuple)):
             self.data["route_snapshots"][stage] = {"available": False}
             return
-        rows = []
+        rows: list[dict[str, Any]] = []
         for route in routes[:MAX_ROUTES]:
             scanner = optional(lambda: route.scanner)
             timestamp = number(
@@ -138,7 +148,7 @@ class TransportDiagnostics:
             "routes": rows,
         }
 
-    def client(self, client):
+    def client(self, client: Any) -> None:
         """Observe a retained client, without guessing after HA clears a backend."""
         backend = optional(lambda: client.backend_id)
         if isinstance(backend, str) and backend == "bluez_dbus":
@@ -153,16 +163,17 @@ class TransportDiagnostics:
         if selected is not None:
             self.data["selected_route"] = selected
 
-    def error(self, error, stage):
+    def error(self, error: BaseException | None, stage: str) -> None:
         """Record up to three exception families, not messages or class names."""
-        chain = []
+        chain: list[str] = []
         for _ in range(3):
             if error is None:
                 break
-            chain.append(exception_kind(error))
-            error = optional(lambda: error.__cause__ or error.__context__)
+            current = error
+            chain.append(exception_kind(current))
+            error = optional(lambda: current.__cause__ or current.__context__)
         self.data.setdefault("errors", {})[stage] = chain
 
-    def finish(self):
+    def finish(self) -> None:
         self.phase(None)
         self.data["elapsed_ms"] = round((monotonic() - self.started) * 1000, 3)

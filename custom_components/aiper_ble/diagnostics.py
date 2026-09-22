@@ -1,16 +1,21 @@
 """Download cached results only; downloading never initiates Bluetooth activity."""
 
 from dataclasses import asdict
+from typing import Any
 
 from homeassistant.components.diagnostics import async_redact_data
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
 
 from .const import REDACT_KEYS
 from .datapoints import SENSOR_NAMES
 
 
-async def async_get_config_entry_diagnostics(hass, entry):
+async def async_get_config_entry_diagnostics(
+    hass: HomeAssistant, entry: ConfigEntry
+) -> dict[str, Any]:
     runtime = entry.runtime_data
-    return async_redact_data(
+    result: dict[str, Any] = async_redact_data(
         {
             "target_config": asdict(runtime.target),
             "last_result": runtime.last_result,
@@ -42,3 +47,4 @@ async def async_get_config_entry_diagnostics(hass, entry):
         },
         REDACT_KEYS,
     )
+    return result
