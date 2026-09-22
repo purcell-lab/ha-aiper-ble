@@ -167,7 +167,7 @@ fallback, one-click control button or cleaning schedule.
 
 ```yaml
 # Run only after confirming the physical safety conditions below.
-action: aiper_ble_diagnostics.start_cleaning
+action: aiper_ble.start_cleaning
 data:
   entry_id: YOUR_LOADED_S1_ENTRY
   confirm_app_closed: true
@@ -175,7 +175,7 @@ data:
 ```
 
 ```yaml
-action: aiper_ble_diagnostics.stop_cleaning
+action: aiper_ble.stop_cleaning
 data:
   entry_id: YOUR_LOADED_S1_ENTRY
   confirm_app_closed: true
@@ -206,7 +206,7 @@ BLE stop is not an emergency stop; use physical controls if communications fail.
 Any attempted control write invalidates the previous atomic sensor snapshot.
 Its INFO readback is returned separately, never combined with older temperature
 or warning readings. A successful subsequent scheduled cycle, or a separately
-authorised `aiper_ble_diagnostics.poll_now`, refreshes sensors.
+authorised `aiper_ble.poll_now`, refreshes sensors.
 Cached diagnostics record `last_control`, including `acknowledged`,
 `state_verified`, `motion_may_have_changed`, outcome and bounded exchange details.
 Downloading diagnostics does not send BLE traffic.
@@ -232,10 +232,10 @@ See [additional APK query assessment](apk_query_catalog.md).
 | Setter construction | `BleManager$BleDeviceManager$sendSetATInternal$1.invokeSuspend` |
 | Setter acknowledgement | `BleManager.BleDeviceManager.receiveResponse`, targeted fallback instruction dump |
 | App state enum and predicates | `StatusType`, `S1StatusInfo.getStatusType` |
-| Fixed codec and response validation | [`protocol.py`](../custom_components/aiper_ble_diagnostics/protocol.py) |
-| Bounded control orchestration | [`controls.py`](../custom_components/aiper_ble_diagnostics/controls.py) |
-| INFO-derived HA enum | [`s1_states.py`](../custom_components/aiper_ble_diagnostics/s1_states.py) |
-| Offline control regression tests | [`test_controls.py`](../tests/aiper_ble_diagnostics/test_controls.py) |
+| Fixed codec and response validation | [`protocol.py`](../custom_components/aiper_ble/protocol.py) |
+| Bounded control orchestration | [`controls.py`](../custom_components/aiper_ble/controls.py) |
+| INFO-derived HA enum | [`s1_states.py`](../custom_components/aiper_ble/s1_states.py) |
+| Offline control regression tests | [`test_controls.py`](../tests/aiper_ble/test_controls.py) |
 
 PR #23 passed 868 offline tests, including fake-hardware execution through both
 transport implementations, and its CI checks. Those results do not prove a

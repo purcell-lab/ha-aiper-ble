@@ -342,7 +342,7 @@ Polling is disabled by default. Enabling it requires an explicit exclusive-acces
 confirmation. Keep the app closed and other BLE clients idle; remote proxies do
 not expose every local BlueZ connection-ownership property.
 
-`aiper_ble_diagnostics.poll_now` requires an enabled, authorised config entry and
+`aiper_ble.poll_now` requires an enabled, authorised config entry and
 `confirm_app_closed: true`. It may shorten failure backoff after the configured
 normal interval has elapsed since the preceding attempt finished. It cannot
 bypass the normal interval, an active operation, suspension, unloading or identity
@@ -354,7 +354,7 @@ does not initiate Bluetooth traffic.
 
 ## Reproduction and remaining work
 
-The offline tests in `tests/aiper_ble_diagnostics/` cover encoding vectors,
+The offline tests in `tests/aiper_ble/` cover encoding vectors,
 fragmented framing, CRC acceptance, field validation, connection bounds, cleanup,
 proxy-route guards, manual polling and entity/device lifecycle. They do not
 substitute for physical tests across firmware versions.

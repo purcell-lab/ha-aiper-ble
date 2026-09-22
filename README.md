@@ -4,7 +4,7 @@ Experimental local Bluetooth telemetry and guarded cleaning actions for the Aipe
 Assistant-managed adapters and active Bluetooth proxies. This is an independent
 community integration, not an official Aiper product.
 
-**Version 0.10.0.** The integration domain remains `aiper_ble_diagnostics` for
+**Version 0.10.0.** The integration domain remains `aiper_ble` for
 compatibility with existing installations.
 
 Adds an INFO-derived operating-state enum sensor and explicit `start_cleaning`
@@ -80,7 +80,7 @@ disabling proxies or changing the production polling transport.
 - Keeps four optional diagnostics disabled by default: raw temperature, time
   zone, Wi-Fi RSSI and network name. Retires 14 speculative OpInfo/Machine
   entities that were not returned by the S1.
-- Provides a guarded `aiper_ble_diagnostics.poll_now` action.
+- Provides a guarded `aiper_ble.poll_now` action.
 - Provides independent `query_s1_info`, `query_opinfo`, `query_info` and
   `query_warn` actions for [guarded bisection](docs/isolated_query_bisection.md)
   while recurring polling is disabled. These return diagnostics, not partial
@@ -126,24 +126,45 @@ unconfirmed disconnect still suspends. Review the cause before reloading or
 restarting, which clears volatile suspension. Remote proxies cannot expose all local BlueZ ownership
 metadata, so exclusive access remains an operator responsibility.
 
-Read the [full safety and diagnostics guide](docs/aiper_ble_diagnostics.md)
+Read the [full safety and diagnostics guide](docs/aiper_ble.md)
 before enabling polling.
 
 ## Install
 
 ### Manual installation
 
-1. Copy `custom_components/aiper_ble_diagnostics/` from this repository into
+1. Copy `custom_components/aiper_ble/` from this repository into
    your HA `/config/custom_components/` directory.
 2. Restart Home Assistant once.
 3. Go to **Settings > Devices & services > Add integration** and select
-   **Aiper BLE Diagnostics**.
+   **Aiper BLE**.
 4. Select the robot from HA's cached Bluetooth discovery.
 5. Open the integration's configuration options if you wish to enable polling.
    Read and confirm the exclusive-access and legacy-protocol options.
 
 The repository includes `hacs.json` and the single-integration directory layout
 for use as a HACS custom repository. It is not a default HACS listing.
+
+### Migrating from the `aiper_ble_diagnostics` domain
+
+Version 0.12.0 renamed the integration domain from `aiper_ble_diagnostics` to
+`aiper_ble`. Home Assistant cannot move a config entry between domains, and a
+HACS repository can hold only one integration directory, so there is no
+in-place migration:
+
+1. Update through HACS (or copy the new `custom_components/aiper_ble/`
+   directory) and delete the old `custom_components/aiper_ble_diagnostics/`
+   directory if it remains. Restart Home Assistant.
+2. Remove the old **Aiper BLE Diagnostics** entry under Settings > Devices &
+   services. Its entities are removed with it.
+3. Add **Aiper BLE** and select the robot, then set the options again
+   (polling, exclusive-access confirmation, transport, vacuum controls).
+
+Entity IDs are fixed by the integration (`sensor.aiper_ble_*`,
+`vacuum.aiper_surfer_s1`), so recorder history continues under the same IDs.
+Entity customisations such as areas, custom names or renamed IDs need to be
+re-applied. Automations that call `aiper_ble_diagnostics.*` actions must be
+changed to `aiper_ble.*`.
 See [HACS integration repository requirements](https://www.hacs.xyz/docs/publish/integration/).
 HACS validation and a default-directory submission have not been completed.
 
@@ -199,7 +220,7 @@ raises an error and leaves the entity unavailable until the next poll.
 ## Poll now
 
 ```yaml
-action: aiper_ble_diagnostics.poll_now
+action: aiper_ble.poll_now
 data:
   entry_id: YOUR_AIPER_BLE_CONFIG_ENTRY_ID
   confirm_app_closed: true
@@ -246,9 +267,9 @@ Use Python 3.14:
 
 ```sh
 python -m pip install -r requirements-aiper-ble-test.txt
-ruff check --config ruff-aiper.toml custom_components/aiper_ble_diagnostics tests/aiper_ble_diagnostics
-ruff format --config ruff-aiper.toml --check custom_components/aiper_ble_diagnostics tests/aiper_ble_diagnostics
-python -m pytest -q tests/aiper_ble_diagnostics --disable-socket --allow-unix-socket --asyncio-mode=auto
+ruff check --config ruff-aiper.toml custom_components/aiper_ble tests/aiper_ble
+ruff format --config ruff-aiper.toml --check custom_components/aiper_ble tests/aiper_ble
+python -m pytest -q tests/aiper_ble --disable-socket --allow-unix-socket --asyncio-mode=auto
 ```
 
 Tests use fake Bluetooth

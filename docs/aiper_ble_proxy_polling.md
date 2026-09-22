@@ -13,7 +13,7 @@ shared connection identifier. This uses the standard
 After switching the robot on, use Developer Tools > Actions:
 
 ```yaml
-action: aiper_ble_diagnostics.poll_now
+action: aiper_ble.poll_now
 data:
   entry_id: YOUR_AIPER_BLE_CONFIG_ENTRY_ID
   confirm_app_closed: true
@@ -44,7 +44,7 @@ For callers requesting a response, an operational polling failure returns
 `status` (`failed` or `suspended`), `error_code`, `consecutive_failures`, and
 `details`, instead of leaking an `UpdateFailed` exception as a generic HTTP 500.
 The successful response is unchanged. REST clients must use
-`POST /api/services/aiper_ble_diagnostics/poll_now?return_response` and inspect
+`POST /api/services/aiper_ble/poll_now?return_response` and inspect
 `service_response.status`: HTTP 200 means the action returned a result, not that
 the robot answered successfully. Automations requesting a response must likewise
 check `status == "ok"` before acting on telemetry.
