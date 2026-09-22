@@ -19,7 +19,7 @@ from homeassistant.core import (
     SupportsResponse,
     callback,
 )
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
@@ -36,6 +36,7 @@ from .coordinator import (
     AiperCoordinator,
 )
 from .datapoints import DEFAULT_ENABLED, RETIRED_ENTITY_KEYS, SENSOR_NAMES
+from .errors import failure, validation
 from .probe import Target, open_bluez
 from .probe import probe as run_probe
 from .protocol import Listen, Query, preview
@@ -76,23 +77,20 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             or entry.domain != DOMAIN
             or not isinstance(getattr(entry, "runtime_data", None), Runtime)
         ):
-            raise ServiceValidationError("Select a loaded Aiper BLE entry.")
+            raise validation("select_loaded_entry")
         runtime = entry.runtime_data
         if runtime.closing:
-            raise ServiceValidationError("Integration is unloading.")
+            raise validation("unloading")
         if runtime.task and not runtime.task.done():
-            raise ServiceValidationError("A probe is already running.")
+            raise validation("probe_running")
         if call.service in CONTROL_SERVICES:
             if not all(
                 call.data.get(key) is True
                 for key in ("confirm_app_closed", "confirm_safe_to_move")
             ):
-                raise ServiceValidationError(
-                    "Close other BLE clients and confirm robot in water, unplugged, "
-                    "no people in pool, no update in progress and safe to operate."
-                )
+                raise validation("control_confirmations")
             if runtime.coordinator is None:
-                raise ServiceValidationError("Polling coordinator is unavailable.")
+                raise validation("coordinator_unavailable")
             try:
                 result = await async_control(runtime.coordinator, call.service)
             finally:
@@ -111,16 +109,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                     "confirm_notifications",
                 )
             ):
-                raise ServiceValidationError(
-                    "Confirm idle BLE clients, query write and notifications."
-                )
+                raise validation("isolated_confirmations")
             if runtime.coordinator is None:
-                raise ServiceValidationError("Polling coordinator is unavailable.")
+                raise validation("coordinator_unavailable")
             if (
                 call.service == PROXY_TRACE_SERVICE
                 and call.data["confirm_proxy_logging"] is not True
             ):
-                raise ServiceValidationError("Authorise bounded native proxy logging.")
+                raise validation("proxy_logging_confirmation")
             try:
                 result = await runtime.coordinator.async_query_isolated(
                     ISOLATED_QUERIES.get(call.service, "OpInfo"),
@@ -130,18 +126,13 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             finally:
                 async_dispatcher_send(hass, SIGNAL_RESULT, entry.entry_id)
             if not call.return_response and result["status"] != "query_complete":
-                raise ServiceValidationError(
-                    f"Isolated query {result['status']}. See integration diagnostics."
-                )
+                raise validation("isolated_query_failed", status=result["status"])
             return result if call.return_response else None
         if call.service == "poll_now":
             if call.data.get("confirm_app_closed") is not True:
-                raise ServiceValidationError(
-                    "Close the Aiper app and other BLE clients, then "
-                    "confirm_app_closed: true."
-                )
+                raise validation("confirm_app_closed")
             if runtime.coordinator is None:
-                raise ServiceValidationError("Polling coordinator is unavailable.")
+                raise validation("coordinator_unavailable")
             try:
                 result = await runtime.coordinator.async_poll_now()
             except UpdateFailed:
@@ -153,9 +144,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                         "consecutive_failures": coordinator.failures,
                         "details": dict(coordinator.last_poll_details),
                     }
-                raise ServiceValidationError(
-                    f"Aiper BLE poll {coordinator.status}: {coordinator.error_code}. "
-                    "See integration diagnostics; do not bypass the cooldown."
+                raise validation(
+                    "poll_failed",
+                    status=coordinator.status,
+                    error_code=coordinator.error_code,
                 ) from None
             return result if call.return_response else None
         query = (
@@ -171,35 +163,23 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         if call.service == "protocol_preview":
             return preview(query)
         if runtime.target.adapter_path is None:
-            raise ServiceValidationError(
-                "This legacy diagnostic action requires a local adapter entry. "
-                "HA-managed polling supports this proxy-only entry."
-            )
+            raise validation("local_adapter_required")
         listen = call.service == "listen_once"
         if listen:
             query = Listen(call.data.get("confirm_legacy_probe", False))
         read = call.service == "read_once"
         connect = call.service in {"discover", "read_once", "query_once", "listen_once"}
         if connect and call.data.get("confirm_app_closed") is not True:
-            raise ServiceValidationError(
-                "Close the Aiper app and other BLE clients, then confirm_app_closed: true."
-            )
+            raise validation("confirm_app_closed")
         if read and call.data.get("confirm_read_only") is not True:
-            raise ServiceValidationError(
-                "Authorise one raw characteristic read with confirm_read_only: true."
-            )
+            raise validation("confirm_read_only")
         if listen and call.data.get("confirm_notifications") is not True:
-            raise ServiceValidationError(
-                "Authorise notification subscription with confirm_notifications."
-            )
+            raise validation("confirm_notifications")
         if isinstance(query, Query) and (
             call.data.get("confirm_query_write") is not True
             or call.data.get("confirm_notifications") is not True
         ):
-            raise ServiceValidationError(
-                "Authorise notification subscription and one selected status "
-                "command with confirm_notifications and confirm_query_write."
-            )
+            raise validation("confirm_query_write")
         # No await before this assignment: concurrent calls cannot both pass the guard.
         runtime.task = asyncio.current_task()
         report = {
@@ -254,9 +234,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             "query_complete",
             "listen_complete",
         }:
-            raise HomeAssistantError(
-                f"Probe stopped ({report['status']}). Download integration diagnostics."
-            )
+            raise failure("probe_stopped", status=report["status"])
         return report if call.return_response else None
 
     schema = {vol.Required("entry_id"): str}

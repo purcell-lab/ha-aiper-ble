@@ -202,6 +202,106 @@ from a configuration-repository deployment to HACS, stop that deployment from
 overwriting this directory. Publishing this repository does not itself change
 any live HA installation or remove the old repository's copy.
 
+## Supported devices
+
+Only the Aiper Surfer S1 (solar pool skimmer) is supported, and only over the
+legacy Bluetooth LE protocol it exposes. Setup accepts robots whose Bluetooth
+name starts with `Aiper-Surfer S1-` or `Aiper_Surfer S1_`. Robots that
+advertise the newer key-exchange protocol are vetoed before any write. Other
+Aiper models use different command sets and are not accepted.
+
+## Supported functions
+
+| Function | Entity or action |
+| --- | --- |
+| Battery, temperature, raw status, mode, warning and solar codes, INFO state | `sensor.aiper_ble_*` |
+| Water temperature while working | `sensor.aiper_ble_water_temperature` |
+| Vacuum state and start/stop | `vacuum.aiper_surfer_s1` |
+| Start and stop with per-call confirmation | `aiper_ble.start_cleaning`, `aiper_ble.stop_cleaning` |
+| Immediate poll | `aiper_ble.poll_now` |
+| Isolated single-query diagnostics and transport experiments | `aiper_ble.query_*`, `preflight`, `discover`, `read_once`, `listen_once`, `protocol_preview`, `query_once` |
+| Polling health, suspension and repair | `sensor.aiper_ble_polling_status`, Settings > Repairs |
+
+## How data is updated
+
+Polling is local push-free polling over Bluetooth LE: every cycle opens one
+short connection per fixed query (S1_INFO, OpInfo, INFO, WARN over Home
+Assistant's Bluetooth routes; S1_INFO and INFO over the direct-local adapter),
+verifies each reply's CRC, and publishes all values at once. The interval is
+300 s by default and counts from the end of the previous cycle. A failed cycle
+doubles the interval up to an hour and makes measured values unavailable until
+the next success. After a Home Assistant restart the first cycle waits for
+startup plus 45 s so Bluetooth proxies can reconnect. Controls never run
+automatically.
+
+## Known limitations
+
+- No pause or resume: the only known setter is stop-to-standby.
+- No in-water field exists on the BLE interface; the operating state is the
+  only water-related signal.
+- The solar code has never read anything but 0; its meaning is unverified.
+- The temperature probe's location is unverified.
+- Controls are live-validated on one robot and one firmware only.
+- The robot has no dock. "Docked" on the vacuum means on its wall charger.
+- Proxy placement matters: a robot at the far side of a pool from the proxy
+  drops to about -95 dBm and polls fail until it comes closer.
+- The app and this integration cannot share the robot; keep the app closed.
+
+## Use cases
+
+- Battery and water temperature on a dashboard without opening the app.
+- Notify when the vacuum reports `error` (a non-zero warning code).
+- Start a clean from an automation once nobody is in the pool area, and stop
+  it when the robot's battery drops below a threshold.
+- Track cleaning sessions from the operating state and the minute counter.
+
+## Examples
+
+```yaml
+# Stop the robot when a presence sensor sees someone at the pool.
+automation:
+  - alias: Aiper stop when pool occupied
+    triggers:
+      - trigger: state
+        entity_id: binary_sensor.pool_area_occupancy
+        to: "on"
+    conditions:
+      - condition: state
+        entity_id: vacuum.aiper_surfer_s1
+        state: cleaning
+    actions:
+      - action: vacuum.stop
+        target:
+          entity_id: vacuum.aiper_surfer_s1
+```
+
+```yaml
+# Notify on a fault code.
+automation:
+  - alias: Aiper fault
+    triggers:
+      - trigger: state
+        entity_id: vacuum.aiper_surfer_s1
+        to: error
+    actions:
+      - action: notify.notify
+        data:
+          message: >
+            Aiper reports warning code
+            {{ state_attr('vacuum.aiper_surfer_s1', 'warning_code_raw') }}.
+```
+
+```yaml
+# Tile card with the vacuum's start and stop buttons.
+type: tile
+entity: vacuum.aiper_surfer_s1
+features:
+  - type: vacuum-commands
+    commands:
+      - start_pause
+      - stop
+```
+
 ## Configuration options
 
 Open the integration's **Configure** dialog to change these. Every change
