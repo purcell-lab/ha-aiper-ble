@@ -4,6 +4,11 @@ Updated 22 September 2026 (AEST) for integration version 0.10.0. This is a limit
 evidence-led description of the legacy Surfer S1 telemetry path, not a universal
 Aiper protocol specification or an official vendor document.
 
+For a consolidated UUID, command and HA-action inventory, see
+[reverse-engineered endpoints and controls](reverse_engineered_endpoints.md).
+The detailed [state and control trace](s1_states_and_controls.md) records the
+APK predicates and distinguishes implemented setters from live-validated ones.
+
 ## Scope and evidence
 
 Four evidence classes are kept separate:
@@ -219,8 +224,9 @@ nonfinite numbers and unsupported envelopes are rejected.
 
 Early one-shot diagnostics reported response checksums as unverified.
 The later polling coordinator validates them before publishing sensors.
-All four fixed query replies and confirmed connection cleanup are required before
-a cycle publishes. A reply alone is not a successful polling cycle.
+Every configured query reply and confirmed connection cleanup are required
+before a cycle publishes: four queries for HA Bluetooth, or S1_INFO and INFO
+for direct-local polling. A reply alone is not a successful polling cycle.
 There is no request ID, so a matching response and valid CRC do not by themselves
 prove request-response causality or exclude an unsolicited matching frame.
 

@@ -5,6 +5,10 @@ This is a targeted S1-focused assessment, not an exhaustive list of every
 command in the APK. Static call sites do not establish firmware compatibility
 or prove that a query-looking command has no side effects.
 
+For the current UUID and command inventory, including the separately guarded
+MODE setters added in version 0.10.0, see
+[reverse-engineered endpoints and controls](reverse_engineered_endpoints.md).
+
 See [APK provenance and hash](aiper_ble_apk_361_evidence.md). The implementation
 is independently written; no APK, decompiled source, secrets or private robot
 identifiers are included in this repository.
@@ -36,9 +40,11 @@ Expected acknowledgement/report text:
 +WARN:<signed-decimal-int64>\r\n
 ```
 
-Strict one-field/CRLF acceptance is integration policy inferred from the app's
-first-field consumer and established AT framing. It is not a captured WARN
-reply. Additional fields, malformed numbers or out-of-range values fail closed.
+Strict one-field/CRLF acceptance is integration policy informed by the app's
+first-field consumer and the live zero reply documented in the
+[BLE specification](AIPER_POOL_ROBOT_BLE_SPEC.md#separate-warn-query-raw-warning-code-observed).
+That capture does not establish every firmware's response shape.
+Additional fields, malformed numbers or out-of-range values fail closed.
 The polling path also requires `Machine`, integer `res: 0`, full-data CRC and
 confirmed cleanup. Report takes precedence over ack. Negative values remain raw,
 not assigned a fault meaning. Even zero is displayed as code `0`, not promoted

@@ -14,6 +14,10 @@ These commands are traced from Android 3.6.1 but are not yet live-validated.
 They are never sent automatically by polling. See
 [S1 states and controls](docs/s1_states_and_controls.md) before use.
 
+The consolidated [reverse-engineered endpoint reference](docs/reverse_engineered_endpoints.md)
+maps BLE UUIDs, fixed telemetry/control commands, reply validation, state
+enumerations and HA actions to their APK evidence and live-validation status.
+
 Direct-local polling now requests only `S1_INFO` (temperature) and `INFO`
 (battery state of charge). It no longer connects for `OpInfo` or `WARN`.
 This halves the connections per local cycle without changing the polling
