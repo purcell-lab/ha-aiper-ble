@@ -1,23 +1,29 @@
 """One fixed opt-in query or S1 control exchange on a pinned S1, without retry."""
 
 import asyncio
+from collections.abc import Mapping
+from typing import Any
 
 from dbus_fast import Message, MessageType, Variant
+from dbus_fast.aio import MessageBus
 
 from .probe import (
     CHAR_IF,
     Bluez,
     BluezError,
     ProbeError,
+    Target,
     endpoint_properties,
-    unpack,
+    reply_body,
     validate_query_protocol,
 )
 from .protocol import (
     MAX_TOTAL_BYTES,
+    Control,
     Decoder,
     Listen,
     ProtocolError,
+    Query,
     chunks,
     query_frame,
     query_telemetry,
@@ -30,13 +36,19 @@ DBUS = "org.freedesktop.DBus"
 PROPERTIES = "org.freedesktop.DBus.Properties"
 
 
-def query_endpoint(objects, target, query, *, active=False):
+def query_endpoint(
+    objects: Mapping[str, Any],
+    target: Target,
+    query: Query | Control | Listen,
+    *,
+    active: bool = False,
+) -> tuple[str, dict[str, Any]]:
     """Require query flags independently of the raw-read flag."""
     path, props = endpoint_properties(objects, target)
     if props.get("Notifying") and not active:
         raise ProtocolError("notifications_already_active")
     flags = set(props.get("Flags", []))
-    required = {"notify"}
+    required: set[str] = {"notify"}
     if not isinstance(query, Listen):
         required.add(
             "write-without-response" if query.write_mode == "command" else "write"
@@ -60,35 +72,49 @@ def query_endpoint(objects, target, query, *, active=False):
 class QueryBluez(Bluez):
     """Keep legacy discovery/read allowlists unchanged; permit exact messages."""
 
-    def __init__(self, bus, target, query):
+    def __init__(
+        self, bus: MessageBus, target: Target, query: Query | Control | Listen
+    ) -> None:
         super().__init__(bus, target)
         self.query = query
         self._query_used = False
-        self._permit = None
-        self._query_path = None
+        self._permit: tuple[str, str, str, str, list[Any]] | None = None
+        self._query_path: str | None = None
         self._start_used = self._stop_used = False
-        self._write_plan = []
+        self._write_plan: list[list[Any]] = []
 
-    async def call(self, path, interface, member, signature="", body=None):
+    async def call(
+        self,
+        path: str,
+        interface: str,
+        member: str,
+        signature: str = "",
+        body: list[Any] | None = None,
+    ) -> Any:
         attempted = (path, interface, member, signature, body or [])
         if self._permit is None or attempted != self._permit:
             return await super().call(path, interface, member, signature, body)
         self._permit = None
-        reply = await self.bus.call(
-            Message(
-                destination="org.bluez",
-                path=path,
-                interface=interface,
-                member=member,
-                signature=signature,
-                body=body or [],
+        return reply_body(
+            await self.bus.call(
+                Message(
+                    destination="org.bluez",
+                    path=path,
+                    interface=interface,
+                    member=member,
+                    signature=signature,
+                    body=body or [],
+                )
             )
         )
-        if reply.message_type == MessageType.ERROR:
-            raise BluezError(reply.error_name)
-        return unpack(reply.body)
 
-    async def _exact(self, path, member, signature="", body=None):
+    async def _exact(
+        self,
+        path: str | None,
+        member: str,
+        signature: str = "",
+        body: list[Any] | None = None,
+    ) -> Any:
         if path is None or path != self._query_path:
             raise ProbeError("Query endpoint not authorised.")
         if (
@@ -121,43 +147,47 @@ class QueryBluez(Bluez):
         finally:
             self._permit = None
 
-    async def _daemon(self, member, value):
+    async def _daemon(self, member: str, value: str) -> Any:
         """Private fixed D-Bus routing operations, never Bluetooth properties."""
         if member not in {"GetNameOwner", "AddMatch", "RemoveMatch"}:
             raise ProbeError("Unsupported signal routing operation.")
-        reply = await self.bus.call(
-            Message(
-                destination=DBUS,
-                path="/org/freedesktop/DBus",
-                interface=DBUS,
-                member=member,
-                signature="s",
-                body=[value],
+        return reply_body(
+            await self.bus.call(
+                Message(
+                    destination=DBUS,
+                    path="/org/freedesktop/DBus",
+                    interface=DBUS,
+                    member=member,
+                    signature="s",
+                    body=[value],
+                )
             )
         )
-        if reply.message_type == MessageType.ERROR:
-            raise BluezError(reply.error_name)
-        return unpack(reply.body)
 
-    async def query_once(self, report):
+    async def query_once(self, report: dict[str, Any]) -> None:
+        query = self.query
+        if isinstance(query, Listen):
+            raise ProtocolError("not_a_query")
         if self._query_used:
             raise ProtocolError("query_already_attempted")
         self._query_used = True
         report.update(
-            command=self.query.query_type,
-            checksum_mode=self.query.checksum_mode,
-            write_mode=self.query.write_mode,
+            command=query.query_type,
+            checksum_mode=query.checksum_mode,
+            write_mode=query.write_mode,
             write_attempts=0,
             writes_completed=0,
             protocol_evidence="not_yet_validated",
         )
-        queue = asyncio.Queue(maxsize=32)
+        queue: asyncio.Queue[Any] = asyncio.Queue(maxsize=32)
         overflow = False
         handler_added = match_attempted = notify_attempted = False
-        path = rule = owner = None
+        path: str | None = None
+        owner: str | None = None
+        rule = ""
         decoder = Decoder()
 
-        def handler(message):
+        def handler(message: Message) -> None:
             nonlocal overflow
             if (
                 message.message_type != MessageType.SIGNAL
@@ -184,7 +214,7 @@ class QueryBluez(Bluez):
             else:
                 queue.put_nowait(value)
 
-        def decode(value):
+        def decode(value: Any) -> list[dict[str, Any]]:
             if isinstance(value, ProtocolError):
                 raise value
             return decoder.feed(value)
@@ -193,7 +223,7 @@ class QueryBluez(Bluez):
             async with asyncio.timeout(EXCHANGE_SECONDS):
                 report["stage"] = "query_validation"
                 data = await self.objects()
-                path, props = query_endpoint(data, self.target, self.query)
+                path, props = query_endpoint(data, self.pinned, query)
                 self._query_path = path
                 report["protocol"] = "legacy_xor"
                 report["negotiated_mtu"] = (
@@ -225,11 +255,11 @@ class QueryBluez(Bluez):
                 report["stage"] = "query_revalidation"
                 fresh_objects = await self.objects()
                 fresh_path, props = query_endpoint(
-                    fresh_objects, self.target, self.query, active=True
+                    fresh_objects, self.pinned, query, active=True
                 )
                 if fresh_path != path or props.get("Notifying") is not True:
                     raise ProtocolError("notification_endpoint_changed")
-                hint = validate_query_protocol(fresh_objects, self.target, self.query)
+                hint = validate_query_protocol(fresh_objects, self.pinned, query)
                 report["protocol_evidence"] = (
                     "explicit_probe_resolved_legacy_gatt_no_advertisement"
                     if hint == "unknown"
@@ -242,8 +272,8 @@ class QueryBluez(Bluez):
                 decoder.buffer.clear()
                 report["stage"] = "query_write"
                 self._write_plan = [
-                    [chunk, {"type": Variant("s", self.query.write_mode)}]
-                    for chunk in chunks(query_frame(self.query), props.get("MTU"))
+                    [chunk, {"type": Variant("s", query.write_mode)}]
+                    for chunk in chunks(query_frame(query), props.get("MTU"))
                 ]
                 while self._write_plan:
                     if overflow:
@@ -265,22 +295,22 @@ class QueryBluez(Bluez):
                         raise ProtocolError("notification_queue_overflow")
                     frames = decode(await queue.get())
                     for response in frames:
-                        evidence = response_evidence(response, self.query)
+                        evidence = response_evidence(response, query)
                         if evidence:
                             report["response_evidence"] = evidence
-                        candidates = query_telemetry(response, self.query)
+                        candidates = query_telemetry(response, query)
                         if candidates is None:
                             continue
                         report["protocol_response"] = response
                         report["telemetry_candidates"] = candidates
                         report["temperature_interpretation"] = (
                             "app_3_6_1_celsius_div10_sensor_location_unverified"
-                            if self.query.query_type == "S1_INFO"
+                            if query.query_type == "S1_INFO"
                             else "unverified_no_units"
                         )
                         report["response_match"] = (
-                            f"type_and_{self.query.query_type.lower()}_prefix_no_request_id"
-                            if self.query.query_type != "OpInfo"
+                            f"type_and_{query.query_type.lower()}_prefix_no_request_id"
+                            if query.query_type != "OpInfo"
                             else "type_only_no_request_id"
                         )
                         report["response_checksum_validation"] = "not_verified"

@@ -85,7 +85,7 @@ rules:
     status: exempt
     comment: No HTTP client is used.
   strict-typing:
-    status: todo
+    status: done
     comment: >
-      Strict mypy runs in CI on the modules listed in mypy.ini; modules are
-      added as they are annotated (see #35).
+      Strict mypy runs in CI over the whole integration (mypy.ini) and the
+      package ships py.typed.
