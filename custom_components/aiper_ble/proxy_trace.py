@@ -20,6 +20,7 @@ from homeassistant.util import dt as dt_util
 
 from .probe import Target
 from .protocol import Control, ProtocolError, Query
+from .transport_diagnostics import TransportDiagnostics
 
 SUPPORTED_VERSIONS = {
     "habluetooth": "6.26.11",
@@ -332,7 +333,12 @@ def select_route(manager, target, source):
     return route
 
 
-def pinned_client_class(base, target, source, diagnostics):
+def pinned_client_class(
+    base: type[Any],
+    target: Target,
+    source: str,
+    diagnostics: TransportDiagnostics,
+) -> type[Any]:
     """Change selection only for this client, preserving HA lifecycle."""
     if not issubclass(base, HaBleakClientWrapper):
         raise ProtocolError("proxy_trace_wrapper_unsupported")
@@ -359,7 +365,7 @@ def pinned_client_class(base, target, source, diagnostics):
     return PinnedProxyClient
 
 
-def assert_proxy_backend(client, target, source):
+def assert_proxy_backend(client: Any, target: Target, source: str) -> None:
     """Reject any route drift before notifications and again before writes."""
     backend = getattr(client, "_backend", None)
     device = getattr(client, "_connected_device", None)
