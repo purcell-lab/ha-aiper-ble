@@ -82,7 +82,9 @@ def pinned_client_class(
             details = device.details
             if (
                 device.address.upper() != target.address
-                or (route.advertisement.local_name or device.name) != target.name
+                or not target.matches_name(
+                    route.advertisement.local_name or device.name
+                )
                 or not isinstance(details, dict)
                 or details.get("source")
                 or details.get("path") != target.device_path

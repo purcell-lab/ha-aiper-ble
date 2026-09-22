@@ -312,7 +312,7 @@ def select_route(manager: Any, target: Target, source: str) -> Any:
     scanner, device = route.scanner, route.ble_device
     if (
         device.address.upper() != target.address
-        or (route.advertisement.local_name or device.name) != target.name
+        or not target.matches_name(route.advertisement.local_name or device.name)
         or not isinstance(device.details, dict)
         or device.details.get("source") != source
         or not scanner.connectable

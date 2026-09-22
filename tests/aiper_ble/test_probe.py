@@ -8,6 +8,7 @@ import pytest
 from custom_components.aiper_ble import probe as p
 
 from .helpers import TARGET, Fake
+from .helpers import objects as helper_objects
 
 
 @pytest.mark.parametrize(
@@ -159,6 +160,27 @@ async def test_allowlist_blocks_out_of_scope_operations(operation):
     api = p.Bluez(None, TARGET)
     with pytest.raises(p.ProbeError):
         await api.call(TARGET.device_path, p.CHAR_IF, operation)
+
+
+def test_target_accepts_both_advertised_spellings():
+    target = p.Target("AA:BB:CC:DD:EE:01", "Aiper-Surfer S1-TEST")
+    assert target.matches_name("Aiper-Surfer S1-TEST")
+    assert target.matches_name("Aiper_Surfer S1_TEST")
+    assert p.Target("AA:BB:CC:DD:EE:01", "Aiper_Surfer S1_TEST").matches_name(
+        "Aiper-Surfer S1-TEST"
+    )
+    assert not target.matches_name("Aiper-Surfer S1-OTHER")
+    assert not target.matches_name("Aiper-Surfer S1-TEST ")
+    assert not target.matches_name(None)
+
+
+def test_local_validation_accepts_other_spelling_but_not_other_serial():
+    objects = helper_objects()
+    objects[TARGET.device_path][p.DEVICE_IF]["Name"] = "Aiper_Surfer S1_TEST"
+    assert p.validate(objects, TARGET)["Name"] == "Aiper_Surfer S1_TEST"
+    objects[TARGET.device_path][p.DEVICE_IF]["Name"] = "Aiper-Surfer S1-OTHER"
+    with pytest.raises(p.ProbeError, match="identity changed"):
+        p.validate(objects, TARGET)
 
 
 async def test_allowlist_rejects_other_target():

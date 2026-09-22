@@ -127,7 +127,7 @@ def validate_routes(
     for route in routes:
         candidate, advertisement = route.ble_device, route.advertisement
         name = advertisement.local_name or candidate.name
-        if candidate.address.upper() != target.address or name != target.name:
+        if candidate.address.upper() != target.address or not target.matches_name(name):
             raise ProtocolError("identity_changed")
         hint = protocol_hint({"ManufacturerData": advertisement.manufacturer_data})
         if hint == "ecdh":
