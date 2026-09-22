@@ -3,6 +3,7 @@
 import asyncio
 from contextlib import suppress
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import voluptuous as vol
@@ -12,9 +13,12 @@ from homeassistant.const import (
     Platform,
 )
 from homeassistant.core import (
+    CALLBACK_TYPE,
     CoreState,
+    Event,
     HomeAssistant,
     ServiceCall,
+    ServiceResponse,
     SupportsResponse,
     callback,
 )
@@ -24,6 +28,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.start import async_at_started
+from homeassistant.helpers.typing import ConfigType
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -52,11 +57,11 @@ class Runtime:
 
     target: Target
     last_result: dict[str, Any] = field(default_factory=lambda: {"status": "never_run"})
-    task: asyncio.Task | None = None
+    task: asyncio.Task[Any] | None = None
     closing: bool = False
     coordinator: AiperCoordinator | None = None
 
-    async def async_close(self):
+    async def async_close(self) -> None:
         """Cancel an in-flight probe and allow its disconnect cleanup to finish."""
         self.closing = True
         if self.coordinator:
@@ -67,10 +72,10 @@ class Runtime:
                 await self.task
 
 
-async def async_setup(hass: HomeAssistant, config: dict) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     """Register actions once, even when no entry is loaded."""
 
-    async def handle(call: ServiceCall):
+    async def handle(call: ServiceCall) -> ServiceResponse:
         entry = hass.config_entries.async_get_entry(call.data["entry_id"])
         if (
             entry is None
@@ -150,7 +155,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                     error_code=coordinator.error_code,
                 ) from None
             return result if call.return_response else None
-        query = (
+        query: Query | Listen | None = (
             Query(
                 call.data["checksum_mode"],
                 call.data["write_mode"],
@@ -160,7 +165,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             if call.service in {"protocol_preview", "query_once"}
             else None
         )
-        if call.service == "protocol_preview":
+        if call.service == "protocol_preview" and isinstance(query, Query):
             return preview(query)
         if runtime.target.adapter_path is None:
             raise validation("local_adapter_required")
@@ -182,14 +187,14 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise validation("confirm_query_write")
         # No await before this assignment: concurrent calls cannot both pass the guard.
         runtime.task = asyncio.current_task()
-        report = {
+        report: dict[str, Any] = {
             "status": "running",
             "started_utc": dt_util.utcnow().isoformat(),
             "mode": (
                 "connect_listen_only_disconnect"
                 if listen
                 else f"connect_notify_{query.query_type.lower()}_disconnect"
-                if query is not None
+                if isinstance(query, Query)
                 else "connect_read_once_disconnect"
                 if read
                 else "connect_discover_disconnect"
@@ -200,7 +205,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         runtime.last_result = report
         async_dispatcher_send(hass, SIGNAL_RESULT, entry.entry_id)
         try:
-            options = {"allow_read": read}
+            options: dict[str, Any] = {"allow_read": read}
             if query is not None:
                 options["query"] = query
             async with open_bluez(runtime.target, **options) as api:
@@ -237,7 +242,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             raise failure("probe_stopped", status=report["status"])
         return report if call.return_response else None
 
-    schema = {vol.Required("entry_id"): str}
+    schema: dict[vol.Marker, Any] = {vol.Required("entry_id"): str}
     for service in CONTROL_SERVICES:
         hass.services.async_register(
             DOMAIN,
@@ -252,6 +257,10 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
             ),
             supports_response=SupportsResponse.OPTIONAL,
         )
+    proxy_schema: dict[vol.Marker, Any] = {
+        vol.Required("proxy_entry_id"): str,
+        vol.Required("confirm_proxy_logging"): cv.boolean,
+    }
     for service in (*ISOLATED_QUERIES, LOCAL_BLEAK_SERVICE, PROXY_TRACE_SERVICE):
         hass.services.async_register(
             DOMAIN,
@@ -263,14 +272,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
                     vol.Required("confirm_app_closed"): cv.boolean,
                     vol.Required("confirm_query_write"): cv.boolean,
                     vol.Required("confirm_notifications"): cv.boolean,
-                    **(
-                        {
-                            vol.Required("proxy_entry_id"): str,
-                            vol.Required("confirm_proxy_logging"): cv.boolean,
-                        }
-                        if service == PROXY_TRACE_SERVICE
-                        else {}
-                    ),
+                    **(proxy_schema if service == PROXY_TRACE_SERVICE else {}),
                 }
             ),
             supports_response=SupportsResponse.OPTIONAL,
@@ -282,7 +284,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
         schema=vol.Schema({**schema, vol.Required("confirm_app_closed"): cv.boolean}),
         supports_response=SupportsResponse.OPTIONAL,
     )
-    query_schema = {
+    query_schema: dict[vol.Marker, Any] = {
         **schema,
         vol.Optional("query_type", default="OpInfo"): vol.In(
             ["OpInfo", "S1_INFO", "INFO", "WARN"]
@@ -413,7 +415,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_options_updated))
 
-    async def stop(_event):
+    async def stop(_event: Event) -> None:
         await entry.runtime_data.async_close()
 
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, stop))
@@ -421,7 +423,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 @callback
-def _defer_first_poll(hass: HomeAssistant, entry: ConfigEntry, coordinator):
+def _defer_first_poll(
+    hass: HomeAssistant, entry: ConfigEntry, coordinator: AiperCoordinator
+) -> None:
     """Let remote Bluetooth proxies reconnect before the first HA-route poll.
 
     Right after Home Assistant starts, only the local USB adapter is known;
@@ -430,9 +434,9 @@ def _defer_first_poll(hass: HomeAssistant, entry: ConfigEntry, coordinator):
     and spends a 20-second connect timeout. Wait for startup to finish and a
     settle period before the first cycle. A reload while running polls at once.
     """
-    timer = None
+    timer: CALLBACK_TYPE | None = None
 
-    async def poll(_now):
+    async def poll(_now: datetime) -> None:
         nonlocal timer
         timer = None
         if entry.runtime_data.closing or coordinator.suspended:
@@ -440,12 +444,12 @@ def _defer_first_poll(hass: HomeAssistant, entry: ConfigEntry, coordinator):
         await coordinator.async_refresh()
 
     @callback
-    def started(_hass):
+    def started(_hass: HomeAssistant) -> None:
         nonlocal timer
         timer = async_call_later(hass, STARTUP_SETTLE_SECONDS, poll)
 
     @callback
-    def cancel_timer():
+    def cancel_timer() -> None:
         if timer is not None:
             timer()
 
@@ -455,7 +459,7 @@ def _defer_first_poll(hass: HomeAssistant, entry: ConfigEntry, coordinator):
     entry.async_on_unload(cancel_timer)
 
 
-async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry):
+async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Stop old polling and apply explicitly saved options through a reload."""
     await hass.config_entries.async_reload(entry.entry_id)
 

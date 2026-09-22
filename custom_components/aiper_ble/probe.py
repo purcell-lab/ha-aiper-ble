@@ -2,14 +2,16 @@
 
 import asyncio
 import re
+from collections.abc import AsyncIterator, Mapping
 from contextlib import asynccontextmanager
 from dataclasses import dataclass
 from time import monotonic
+from typing import Any
 
 from dbus_fast import BusType, Message, MessageType
 from dbus_fast.aio import MessageBus
 
-from .protocol import ProtocolError, protocol_hint
+from .protocol import Control, Listen, ProtocolError, Query, protocol_hint
 
 EXPECTED_SERVICE = "4a5ad444-2537-11ee-be56-0242ac120002"
 EXPECTED_CHARACTERISTIC = "4a5a54e6-2537-11ee-be56-0242ac120002"
@@ -116,9 +118,9 @@ def device_summary(properties):
     }
 
 
-def candidates(objects):
+def candidates(objects: Mapping[str, Any]) -> dict[str, Target]:
     """List known local devices only; do not start a scanner."""
-    result = {}
+    result: dict[str, Target] = {}
     for path, interfaces in objects.items():
         device = interfaces.get(DEVICE_IF, {})
         if not device.get("Name", "").startswith(("Aiper-", "Aiper_")):
@@ -431,7 +433,15 @@ def error_code(exc):
     return "validation_failed" if isinstance(exc, ProbeError) else "internal_error"
 
 
-async def probe(api, target, report, connect=False, *, read=False, query=None):
+async def probe(
+    api: Any,
+    target: Target,
+    report: dict[str, Any],
+    connect: bool = False,
+    *,
+    read: bool = False,
+    query: Query | Control | Listen | None = None,
+) -> None:
     attempted = False
     try:
         report["stage"] = "preflight"
@@ -562,7 +572,12 @@ async def probe(api, target, report, connect=False, *, read=False, query=None):
 
 
 @asynccontextmanager
-async def open_bluez(target=None, *, allow_read=False, query=None):
+async def open_bluez(
+    target: Target | None = None,
+    *,
+    allow_read: bool = False,
+    query: Query | Control | Listen | None = None,
+) -> AsyncIterator[Any]:
     """Open only the local system bus; do not connect to any BLE device."""
     bus = MessageBus(bus_type=BusType.SYSTEM)
     try:
