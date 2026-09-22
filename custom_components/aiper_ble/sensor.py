@@ -4,7 +4,6 @@ from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
-    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -209,13 +208,14 @@ class ResultSensor(SensorEntity):
         )
 
 
-class WaterTemperatureSensor(AiperEntity, RestoreSensor):
-    """Temperature read only while the robot reports working.
+class WaterTemperatureSensor(AiperEntity, SensorEntity):
+    """Temperature only while the robot reports working; unknown otherwise.
 
     The general temperature sensor updates every cycle, on the charger too.
-    This one keeps the last reading taken while INFO said working, when the
-    robot is certainly in the water, and holds it between cleaning sessions
-    and across restarts. Where the probe sits remains unverified.
+    This one carries the reading only from a cycle in which INFO said working,
+    when the robot is certainly in the water, and reads unknown in any other
+    cycle. The last working reading and its time stay in the attributes.
+    Where the probe sits remains unverified.
     """
 
     _attr_device_class = SensorDeviceClass.TEMPERATURE
@@ -226,33 +226,28 @@ class WaterTemperatureSensor(AiperEntity, RestoreSensor):
         super().__init__(entry, "water_temperature")
         self.entity_id = "sensor.aiper_ble_water_temperature"
 
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        coordinator = self.coordinator
-        if coordinator.water_temperature is not None:
-            return
-        data = await self.async_get_last_sensor_data()
-        if data is None or not isinstance(data.native_value, (int, float)):
-            return
-        coordinator.water_temperature = data.native_value
-        state = await self.async_get_last_state()
-        measured = state.attributes.get("measured_at") if state else None
-        coordinator.water_temperature_at = (
-            dt_util.parse_datetime(measured) if measured else None
+    @property
+    def available(self) -> bool:
+        return (
+            self.polling_active
+            and super().available
+            and self.coordinator.data is not None
+            and self.coordinator.data.get("info_status_raw") is not None
         )
 
     @property
-    def available(self) -> bool:
-        return self.polling_active and self.coordinator.water_temperature is not None
-
-    @property
     def native_value(self) -> float | None:
-        return self.coordinator.water_temperature
+        data = self.coordinator.data or {}
+        if data.get("info_status_raw") == 1 and info_state(data) == "working":
+            value: float | None = data.get("temperature")
+            return value
+        return None
 
     @property
-    def extra_state_attributes(self) -> dict[str, str | None]:
+    def extra_state_attributes(self) -> dict[str, Any]:
         measured = self.coordinator.water_temperature_at
         return {
+            "last_working_reading": self.coordinator.water_temperature,
             "measured_at": (
                 dt_util.as_local(measured).isoformat() if measured else None
             ),
