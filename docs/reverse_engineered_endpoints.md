@@ -18,8 +18,11 @@ acquisition, signature checks and incomplete-decompilation caveats.
   These establish app intent, not universal firmware behaviour.
 - **Implemented:** integration policy and offline-tested request/response
   handling. This does not itself establish live compatibility.
-- **Unverified:** physical start/stop behaviour, setter acknowledgement format
-  on the test robot, and unsupported command candidates.
+- **Live-validated:** one stop and one start on the test robot on
+  22 September 2026 (AEST), each acknowledged with a bare `+OK` and confirmed
+  by INFO readback; see the acceptance record in
+  [S1 states and controls](s1_states_and_controls.md#live-acceptance-record).
+- **Unverified:** other robots and firmware, and unsupported command candidates.
 
 In this document, an endpoint means a BLE GATT characteristic, while a command
 is an application message carried over it. The HA actions are a third, local
@@ -87,8 +90,8 @@ full wire encoding and receive gates are described in the
 | Status, mode and battery | `Machine` | `{"cmd":"AT+INFO?"}` | 10442 | APK-derived; three-field app consumer and five-field live reply |
 | Raw warning code | `Machine` | `{"cmd":"AT+WARN?"}` | 10501 | APK-derived; raw zero reply observed |
 | Wi-Fi metadata | `OpInfo` | `{}` | Omitted | Legacy null-input path; RSSI-only reply observed |
-| Start cleaning | `Machine` | `{"cmd":"AT+MODE=1"}` | 11049 | APK-derived; implemented; physical effect not live-validated |
-| Stop to standby | `Machine` | `{"cmd":"AT+MODE=0"}` | 60280 | APK-derived; implemented; physical effect not live-validated |
+| Start cleaning | `Machine` | `{"cmd":"AT+MODE=1"}` | 11049 | APK-derived; implemented; live-validated on the test robot on 22 September 2026 (AEST) |
+| Stop to standby | `Machine` | `{"cmd":"AT+MODE=0"}` | 60280 | APK-derived; implemented; live-validated on the test robot on 22 September 2026 (AEST) |
 
 The complete start envelope is
 `{"type":"Machine","data":{"cmd":"AT+MODE=1"},"chksum":11049}`.
@@ -115,7 +118,9 @@ so checksum validity alone cannot establish request-response causality.
 
 The app setter parser accepts a case-insensitive `+ok` prefix and rejects
 `+error`. The integration's bare-OK requirement is deliberately stricter and
-has not yet been established by a live setter capture. Bad CRC, nonzero result,
+was met by both live setter replies on the test robot on 22 September 2026
+(AEST): each `+OK\r\n` arrived in a single 141-byte notification with a valid
+CRC and result zero. Other firmware may differ. Bad CRC, nonzero result,
 unexpected reply shape or uncertain cleanup never justifies resending a command.
 Full private replies must not be pasted into public issues: deleting identifying
 fields changes the checksum and cannot produce a valid anonymised CRC example.
@@ -235,8 +240,10 @@ See [additional APK query assessment](apk_query_catalog.md).
 PR #23 passed 868 offline tests, including fake-hardware execution through both
 transport implementations, and its CI checks. Those results do not prove a
 physical control worked; service registration and deployment do not prove that
-either. Live setter acknowledgement, post-command state, actual movement and
-cleanup still require a separately authorised acceptance test.
+either. Live setter acknowledgement, post-command state, movement inferred
+from signal drift, and cleanup were then confirmed by the separately authorised
+acceptance test recorded in
+[S1 states and controls](s1_states_and_controls.md#live-acceptance-record).
 See [PR #23](https://github.com/purcell-lab/ha-aiper-ble/pull/23) and retain
 that distinction in future documentation updates.
 

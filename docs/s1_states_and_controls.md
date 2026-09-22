@@ -1,8 +1,9 @@
 # Surfer S1 state enumeration and guarded cleaning controls
 
 Prepared 22 September 2026 (AEST) for version 0.10.0. These are independently
-implemented, APK-derived controls, not yet validated by moving a physical robot.
-No live BLE action was performed while preparing this change.
+implemented, APK-derived controls. No live BLE action was performed while
+preparing this change; the [live acceptance record](#live-acceptance-record)
+below was added after the owner-authorised test the same morning.
 
 ## Evidence and provenance
 
@@ -161,8 +162,36 @@ rejection, confirmations, preflight blocks, readback mismatch, mutex, cancellati
 cleanup suspension and no retry after ambiguous actuation. Existing telemetry
 and registry tests remain in the regression suite with network sockets disabled.
 
-Live acceptance is still required, under fresh owner authorisation: deploy and
-restart separately, then test one start and one stop with the robot physically
-safe and the app closed. Record bounded acknowledgement shape and readback,
-verify actual movement/standby, and inspect cleanup. Do not repeat an ambiguous
-command automatically. Do not loosen acknowledgement parsing without evidence.
+Live acceptance on another robot or firmware still needs fresh owner
+authorisation: deploy and restart separately, then test one start and one stop
+with the robot physically safe and the app closed. Record bounded
+acknowledgement shape and readback, verify actual movement/standby, and inspect
+cleanup. Do not repeat an ambiguous command automatically. Do not loosen
+acknowledgement parsing without evidence.
+
+## Live acceptance record
+
+Run on the owner's Surfer S1 on 22 September 2026 (AEST), integration version
+0.10.1, Home Assistant Bluetooth route through the poolside ESPHome proxy with
+the local USB adapter's entry disabled. The owner confirmed the safety
+conditions and that the app was closed, but was not on site, so movement was
+inferred from endpoints rather than observed.
+
+| Time | Step | Result |
+| --- | --- | --- |
+| 11:26:24 | Baseline `poll_now` | working, battery 84%, five proxy routes |
+| 11:27:00 | `stop_cleaning` | `+OK` in one 141-byte notification; readback status 0, mode 0; `state_verified` in 4 s |
+| 11:28:25 | `poll_now` | standby |
+| 11:28:43 | `start_cleaning` | preflight INFO standby and WARN 0; `+OK`; readback status 1, mode 1; `state_verified` in 12 s |
+| 11:30:19, 11:32:32, 11:34:31 | `poll_now` | working on all three |
+
+Motion evidence: during the stop both connections read the proxy at -76 dBm.
+After the start the per-query readings ranged -88 to -70, -83 to -76 and
+-62 to -61 dBm across three cycles, a 27 dB spread consistent with the robot
+driving across the pool, as on every cleaning period that morning. Battery held
+at 84% over eight minutes, which the working drain rate of about 1% per ten
+minutes does not contradict. The INFO field 5 minute counter ran 226 to 234
+without resetting at either command. Every connection went through proxies and
+every cleanup confirmed; the slowest connect was 5.4 s for the WARN preflight.
+Both readbacks reflected the new state within two seconds; the state latency
+seen at 09:13 that morning did not recur.
