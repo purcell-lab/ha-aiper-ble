@@ -138,14 +138,16 @@ async def async_control(coordinator: AiperCoordinator, action: str) -> dict[str,
         if result["motion_may_have_changed"] or coordinator.suspended:
             # Retained poll data predates the command; do not present it as current.
             # Readback is returned separately, never merged into an atomic cycle.
-            if not coordinator.suspended:
+            if coordinator.suspended:
+                coordinator._publish_manual_error(
+                    UpdateFailed(str(coordinator.error_code))
+                )
+            else:
                 coordinator.status = "awaiting_poll_after_control"
                 coordinator.error_code = (
                     None if result["state_verified"] else "control_state_unconfirmed"
                 )
-            coordinator._publish_manual_error(
-                UpdateFailed("Refresh telemetry after control.")
-            )
+                coordinator.mark_stale("Refresh telemetry after control.")
     if not result["state_verified"]:
         raise failure("control_unconfirmed", status=result["status"])
     return dict(result)
