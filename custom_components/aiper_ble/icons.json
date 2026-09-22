@@ -1,0 +1,93 @@
+{
+  "entity": {
+    "sensor": {
+      "polling_status": {
+        "default": "mdi:bluetooth"
+      },
+      "discovery_result": {
+        "default": "mdi:bluetooth"
+      },
+      "operating_state": {
+        "default": "mdi:robot",
+        "state": {
+          "working": "mdi:robot-mower",
+          "charging": "mdi:battery-charging",
+          "fully_charged": "mdi:battery",
+          "standby": "mdi:robot-off",
+          "updating": "mdi:update"
+        }
+      },
+      "water_temperature": {
+        "default": "mdi:pool-thermometer"
+      },
+      "solar_status_raw": {
+        "default": "mdi:solar-power"
+      },
+      "warning_code_raw": {
+        "default": "mdi:alert-circle-outline"
+      },
+      "info_status_raw": {
+        "default": "mdi:state-machine"
+      },
+      "info_mode_raw": {
+        "default": "mdi:state-machine"
+      },
+      "s1_timezone": {
+        "default": "mdi:map-clock"
+      },
+      "wifi_rssi_raw": {
+        "default": "mdi:wifi"
+      },
+      "wifi_name": {
+        "default": "mdi:wifi"
+      }
+    }
+  },
+  "services": {
+    "start_cleaning": {
+      "service": "mdi:play"
+    },
+    "stop_cleaning": {
+      "service": "mdi:stop"
+    },
+    "poll_now": {
+      "service": "mdi:refresh"
+    },
+    "query_s1_info": {
+      "service": "mdi:thermometer"
+    },
+    "query_opinfo": {
+      "service": "mdi:wifi"
+    },
+    "query_info": {
+      "service": "mdi:information-outline"
+    },
+    "query_warn": {
+      "service": "mdi:alert-circle-outline"
+    },
+    "query_opinfo_local_bleak": {
+      "service": "mdi:usb"
+    },
+    "query_opinfo_proxy_trace": {
+      "service": "mdi:access-point"
+    },
+    "listen_once": {
+      "service": "mdi:ear-hearing"
+    },
+    "protocol_preview": {
+      "service": "mdi:file-code-outline"
+    },
+    "query_once": {
+      "service": "mdi:send"
+    },
+    "read_once": {
+      "service": "mdi:book-open-variant"
+    },
+    "preflight": {
+      "service": "mdi:check-decagram"
+    },
+    "discover": {
+      "service": "mdi:magnify"
+    }
+  }
+}

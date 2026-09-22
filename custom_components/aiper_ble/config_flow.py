@@ -6,6 +6,7 @@ from dataclasses import asdict
 import voluptuous as vol
 from homeassistant import config_entries
 from homeassistant.components import bluetooth
+from homeassistant.components.bluetooth import BluetoothServiceInfoBleak
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 
@@ -20,12 +21,41 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     VERSION = 1
     MINOR_VERSION = 3
 
+    def __init__(self):
+        self._discovered = None
+
     @staticmethod
     @callback
     def async_get_options_flow(config_entry):
         return OptionsFlow()
 
-    async def async_step_user(self, user_input=None):
+    async def async_step_bluetooth(self, discovery_info: BluetoothServiceInfoBleak):
+        """Offer a robot seen by HA's shared scanners; still no connection."""
+        address = discovery_info.address.upper()
+        await self.async_set_unique_id(address)
+        # A configured robot that now advertises a different name keeps its
+        # entry and picks up the new name (discovery-update-info).
+        self._abort_if_unique_id_configured(updates={"name": discovery_info.name})
+        self._discovered = Target(address, discovery_info.name)
+        self.context["title_placeholders"] = {"name": discovery_info.name}
+        return await self.async_step_bluetooth_confirm()
+
+    async def async_step_bluetooth_confirm(self, user_input=None):
+        """Confirm the discovered robot before creating the entry."""
+        if user_input is not None:
+            return self.async_create_entry(
+                title="Aiper BLE", data=asdict(self._discovered)
+            )
+        return self.async_show_form(
+            step_id="bluetooth_confirm",
+            description_placeholders={"name": self._discovered.name},
+        )
+
+    async def async_step_reconfigure(self, user_input=None):
+        """Point an existing entry at a different robot, keeping its options."""
+        return await self.async_step_user(user_input, reconfigure=True)
+
+    async def async_step_user(self, user_input=None, reconfigure=False):
         """Select cached Aiper metadata; never start a scanner or connection."""
         available = {}
         try:
@@ -50,6 +80,14 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             target = available.get(user_input.get("device"))
             if target is None:
                 errors["base"] = "device_changed"
+            elif reconfigure:
+                entry = self._get_reconfigure_entry()
+                await self.async_set_unique_id(target.address)
+                if target.address != entry.unique_id:
+                    self._abort_if_unique_id_configured()
+                return self.async_update_reload_and_abort(
+                    entry, data=asdict(target), unique_id=target.address
+                )
             else:
                 await self.async_set_unique_id(target.address)
                 self._abort_if_unique_id_configured()
@@ -62,7 +100,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for path, target in available.items()
         ]
         return self.async_show_form(
-            step_id="user",
+            step_id="reconfigure" if reconfigure else "user",
             data_schema=vol.Schema(
                 {
                     vol.Required("device"): selector.SelectSelector(

@@ -8,6 +8,7 @@ from datetime import timedelta
 
 from homeassistant.core import callback
 from homeassistant.exceptions import ServiceValidationError
+from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -126,7 +127,7 @@ class AiperCoordinator(DataUpdateCoordinator):
         )
         self.status = "waiting" if self.enabled else "disabled"
         self.error_code = None
-        self.suspended = False
+        self._suspended = False
         self.failures = 0
         self.next_attempt = 0.0
         self.last_attempt_finished = None
@@ -144,6 +145,31 @@ class AiperCoordinator(DataUpdateCoordinator):
             update_interval=timedelta(seconds=interval) if self.enabled else None,
         )
         self.last_update_success = False
+        # A fresh coordinator (setup or reload) clears any earlier repair issue.
+        self.suspended = False
+
+    @property
+    def suspended(self):
+        return self._suspended
+
+    @suspended.setter
+    def suspended(self, value):
+        """Suspension is surfaced as a repair issue; reloading the entry fixes it."""
+        self._suspended = bool(value)
+        issue_id = f"polling_suspended_{self.config_entry.entry_id}"
+        if self._suspended:
+            ir.async_create_issue(
+                self.hass,
+                DOMAIN,
+                issue_id,
+                is_fixable=True,
+                severity=ir.IssueSeverity.ERROR,
+                translation_key="polling_suspended",
+                translation_placeholders={"error_code": str(self.error_code)},
+                data={"entry_id": self.config_entry.entry_id},
+            )
+        else:
+            ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
     @callback
     def _async_refresh_finished(self):

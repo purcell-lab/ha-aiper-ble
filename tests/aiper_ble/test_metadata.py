@@ -9,13 +9,21 @@ ROOT = Path(__file__).resolve().parents[2]
 COMPONENT = ROOT / "custom_components" / "aiper_ble"
 
 
-def test_manifest_has_no_auto_discovery_or_external_requirements():
+def test_manifest_discovery_matchers_icons_and_no_external_requirements():
     manifest = json.loads((COMPONENT / "manifest.json").read_text())
     assert manifest["domain"] == "aiper_ble"
     assert manifest["dependencies"] == ["bluetooth"]
     assert manifest["requirements"] == []
     assert manifest["config_flow"]
-    assert "bluetooth" not in manifest
+    # Passive discovery only: HA offers robots its shared scanners already see.
+    assert [m["local_name"] for m in manifest["bluetooth"]] == [
+        "Aiper-Surfer S1-*",
+        "Aiper_Surfer S1_*",
+    ]
+    assert all(m["connectable"] for m in manifest["bluetooth"])
+    icons = json.loads((COMPONENT / "icons.json").read_text())
+    services = yaml.safe_load((COMPONENT / "services.yaml").read_text())
+    assert set(icons["services"]) == set(services)
 
 
 def test_service_descriptions_and_translation_match():

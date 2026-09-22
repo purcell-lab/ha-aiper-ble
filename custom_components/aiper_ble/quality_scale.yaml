@@ -52,8 +52,8 @@ rules:
   # Gold
   devices: done
   diagnostics: done
-  discovery: todo
-  discovery-update-info: todo
+  discovery: done
+  discovery-update-info: done
   docs-data-update: todo
   docs-examples: todo
   docs-known-limitations: todo
@@ -69,9 +69,9 @@ rules:
   entity-disabled-by-default: done
   entity-translations: done
   exception-translations: todo
-  icon-translations: todo
-  reconfiguration-flow: todo
-  repair-issues: todo
+  icon-translations: done
+  reconfiguration-flow: done
+  repair-issues: done
   stale-devices:
     status: exempt
     comment: One device per entry; it is removed with the entry.
