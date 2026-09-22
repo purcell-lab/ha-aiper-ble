@@ -387,6 +387,10 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now = asyncio.get_running_loop().time()
         # HA schedules coordinator ticks with sub-second jitter.
         if now + 1 < self.next_attempt:
+            # A control moved the cooldown without moving HA's tick. Land the
+            # next tick at the cooldown end rather than a full interval later;
+            # the cycle that then runs restores the normal or backoff interval.
+            self.update_interval = timedelta(seconds=max(1.0, self.next_attempt - now))
             if self.last_update_success and self.data is not None:
                 return self.data
             raise UpdateFailed("Waiting for the next bounded polling interval")
