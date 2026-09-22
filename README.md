@@ -178,8 +178,13 @@ any live HA installation or remove the old repository's copy.
 `vacuum.aiper_surfer_s1` shows the robot's INFO-derived state as a Home
 Assistant vacuum: `cleaning` for working or sunward, `idle` for standby, and
 `docked` while on its wall charger (this robot has no dock; Home Assistant has
-no charging activity). It is unavailable until a verified polling cycle, or a
-verified control readback, has produced a state. It never guesses.
+no charging activity), and `error` whenever the raw warning code is non-zero.
+It is unavailable until a verified polling cycle, or a verified control
+readback, has produced a state. It never guesses. Its attributes carry the
+battery, temperature, raw warning code, the INFO minute counter (raw, observed
+to count minutes since power-on), the last successful poll, polling status and
+failure count, the backend and signal of the last query, and the last control's
+action and outcome.
 
 Its start and stop buttons are disabled until the option **Enable vacuum
 entity start/stop** is turned on in the integration's options. That option is

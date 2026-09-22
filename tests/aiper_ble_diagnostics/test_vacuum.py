@@ -8,9 +8,11 @@ from homeassistant.exceptions import HomeAssistantError
 from custom_components.aiper_ble_diagnostics.protocol import Control
 from custom_components.aiper_ble_diagnostics.vacuum import ACTIVITIES
 
+from .test_bluetooth import radio as radio  # noqa: F401 - fixture
 from .test_controls import fake_exchange
-from .test_polling import OPTIONS, PATH, setup
+from .test_polling import OPTIONS, PATH, response, setup
 from .test_polling import transport as transport  # noqa: F401 - fixture
+from .test_protocol import frame
 
 ENTITY = "vacuum.aiper_surfer_s1"
 ENABLED = {**OPTIONS, "confirm_vacuum_controls": True}
@@ -43,6 +45,51 @@ async def test_state_follows_verified_polling_cycle(hass, transport):
     assert state.attributes["state_source"] == "polling_cycle"
     assert state.attributes["controls_enabled"] is False
     assert state.attributes["supported_features"] == 8192 | 8 | 4096
+
+
+async def test_attributes_from_verified_cycle_and_five_field_info(hass, transport):
+    def info(bus):
+        bus.response = frame(response("INFO", {"ack": "+INFO:1,1,64,0,155\r\n"}))
+
+    transport[1].extend([lambda bus: None, lambda bus: None, info])
+    entry = await setup(hass)
+    state = hass.states.get(ENTITY)
+    assert state.state == "cleaning"
+    attrs = state.attributes
+    assert attrs["battery"] == 64
+    assert attrs["temperature_c"] == 21.5
+    assert attrs["warning_code_raw"] == 0
+    assert attrs["minutes_counter_raw"] == 155
+    assert attrs["polling_status"] == "ok"
+    assert attrs["consecutive_failures"] == 0
+    assert attrs["last_control"] is None
+    coordinator = entry.runtime_data.coordinator
+    assert attrs["last_successful_poll"] == coordinator.data["last_success"].isoformat()
+    assert hass.states.get("sensor.aiper_ble_operating_status_raw").state == "1"
+    # Three-field replies leave the counter unset rather than inventing a value.
+    await coordinator.async_poll_now()
+    await hass.async_block_till_done()
+    assert hass.states.get(ENTITY).attributes["minutes_counter_raw"] is None
+
+
+async def test_nonzero_warning_reports_error_activity(hass, transport):
+    def warn(bus):
+        bus.response = frame(response("WARN", {"ack": "+WARN:5\r\n"}))
+
+    transport[1].extend([lambda bus: None, lambda bus: None, lambda bus: None, warn])
+    await setup(hass)
+    state = hass.states.get(ENTITY)
+    assert state.state == "error"
+    assert state.attributes["warning_code_raw"] == 5
+    assert state.attributes["operating_state"] == "charging"
+
+
+async def test_last_route_attribute_from_ha_transport(hass, radio):
+    await setup(hass)
+    route = hass.states.get(ENTITY).attributes["last_route"]
+    assert route is not None
+    assert set(route) >= {"backend"}
+    assert "AA:BB" not in str(route)
 
 
 async def test_unavailable_when_polling_disabled_or_failed(hass, transport):

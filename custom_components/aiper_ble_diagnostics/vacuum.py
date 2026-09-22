@@ -84,19 +84,57 @@ class AiperVacuum(CoordinatorEntity, StateVacuumEntity):
         readback = self._control_readback()
         if readback is not None:
             return ACTIVITIES.get(readback["observed_state"])
-        return ACTIVITIES.get(info_state(self.coordinator.data or {}))
+        data = self.coordinator.data or {}
+        if data.get("warning_code_raw") not in (None, 0):
+            # A raw fault code is reported as an error; its meaning stays raw.
+            return VacuumActivity.ERROR
+        return ACTIVITIES.get(info_state(data))
+
+    def _last_route(self):
+        """Backend and signal of the last query, from cached diagnostics."""
+        queries = self.coordinator.last_poll_queries
+        if not queries:
+            return None
+        diagnostics = queries[-1].get("transport_diagnostics") or {}
+        route = {"backend": diagnostics.get("backend")}
+        snapshot = (diagnostics.get("route_snapshots") or {}).get("before_connect")
+        for candidate in (snapshot or {}).get("routes", []):
+            if candidate.get("route_id") == diagnostics.get("selected_route"):
+                route["scanner_type"] = candidate.get("scanner_type")
+                route["rssi_dbm"] = candidate.get("rssi_dbm")
+        return route
 
     @property
     def extra_state_attributes(self):
+        coordinator = self.coordinator
+        data = coordinator.data or {}
         readback = self._control_readback()
+        control = coordinator.last_control_result
+        last_success = data.get("last_success")
         return {
             "operating_state": (
-                readback["observed_state"]
-                if readback is not None
-                else info_state(self.coordinator.data or {})
+                readback["observed_state"] if readback is not None else info_state(data)
             ),
             "state_source": "control_readback" if readback else "polling_cycle",
             "controls_enabled": self.entry.options.get(VACUUM_CONTROLS_OPTION) is True,
+            "battery": data.get("battery"),
+            "temperature_c": data.get("temperature"),
+            "warning_code_raw": data.get("warning_code_raw"),
+            "minutes_counter_raw": data.get("info_field_5_raw"),
+            "last_successful_poll": (
+                last_success.isoformat() if last_success is not None else None
+            ),
+            "polling_status": coordinator.status,
+            "consecutive_failures": coordinator.failures,
+            "last_route": self._last_route(),
+            "last_control": (
+                {
+                    key: control.get(key)
+                    for key in ("action", "status", "observed_state", "finished_at")
+                }
+                if control.get("status") != "never_run"
+                else None
+            ),
         }
 
     async def _run(self, action):

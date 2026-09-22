@@ -187,8 +187,10 @@ At 13:15 AEST on 20 September 2026, a single pinned local BlueZ query received
 zero. The former three-field-only parser rejected this legitimate five-field
 response. The app reads only indices 0/1/2, assigning status, mode and battery.
 Version 0.9.4 accepts exactly three or five signed int32 decimal fields with
-CRLF termination. The last two fields are validated as integers but are neither
-interpreted nor published as sensors. Field 4 read 0 in every capture. Field 5
+CRLF termination. The last two fields are validated as integers and, since
+version 0.11.1, retained raw as `info_field_4_raw` and `info_field_5_raw` in
+coordinator data (no sensors; the vacuum entity shows field 5 as
+`minutes_counter_raw`). Field 4 read 0 in every capture. Field 5
 behaved as a minute counter across nine polls on 22 September 2026 (AEST): 8,
 13, 32, 47, 88, 94, 99, 107 and 156, each step equal to the minutes elapsed,
 and 833 at 06:53 that morning was 13.9 hours after the robot went on its wall
