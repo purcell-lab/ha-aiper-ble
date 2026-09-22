@@ -54,17 +54,29 @@ def test_info_mapping_and_battery_boundaries(field, battery):
 
 
 @pytest.mark.parametrize("field", ["ack", "report"])
-def test_live_observed_five_fields_only_publishes_documented_positions(field):
+def test_live_observed_five_fields_retain_trailing_fields_raw(field):
     assert verified_values(
         response("INFO", {field: "+INFO:0,0,93,0,155\r\n"}), INFO
-    ) == {"info_status_raw": 0, "info_mode_raw": 0, "battery": 93}
+    ) == {
+        "info_status_raw": 0,
+        "info_mode_raw": 0,
+        "battery": 93,
+        "info_field_4_raw": 0,
+        "info_field_5_raw": 155,
+    }
 
 
 @pytest.mark.parametrize("battery", [-127, -1, 101, 255])
 def test_five_field_battery_sentinel_remains_unavailable(battery):
     assert verified_values(
         response("INFO", {"ack": f"+INFO:0,0,{battery},0,155\r\n"}), INFO
-    ) == {"info_status_raw": 0, "info_mode_raw": 0, "battery": None}
+    ) == {
+        "info_status_raw": 0,
+        "info_mode_raw": 0,
+        "battery": None,
+        "info_field_4_raw": 0,
+        "info_field_5_raw": 155,
+    }
 
 
 @pytest.mark.parametrize("battery", [-127, -1, 101, 255, 2147483647])

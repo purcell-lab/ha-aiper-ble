@@ -166,7 +166,11 @@ async def test_local_live_info_full_cycle_and_bounded_diagnostics(hass, local_ra
     assert all(item["notification_cleanup"] == "stop_confirmed" for item in queries)
     assert "protocol_response" not in json.dumps(queries)
     assert "PRIVATE_SERIAL" not in json.dumps(queries)
-    assert "155" not in str(entry.runtime_data.coordinator.data)
+    # Trailing INFO fields are retained raw for the vacuum entity's attributes,
+    # but never become sensors of their own.
+    data = entry.runtime_data.coordinator.data
+    assert data["info_field_4_raw"] == 0 and data["info_field_5_raw"] == 155
+    assert hass.states.get("sensor.aiper_ble_info_field_5_raw") is None
 
 
 async def test_local_shape_failure_is_protocol_error_then_recovers(hass, local_radio):

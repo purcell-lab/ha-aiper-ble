@@ -343,12 +343,18 @@ def query_telemetry(response, query):
         if not all(-(2**31) <= item < 2**31 for item in fields):
             raise ProtocolError("invalid_info_response")
         status, mode, battery = fields[:3]
-        return {
+        values = {
             "info_status_raw": status,
             "info_mode_raw": mode,
             # Preserve other valid fields, but never clamp a sentinel to 0/100.
             "battery": battery if 0 <= battery <= 100 else None,
         }
+        if len(fields) == 5:
+            # Retained raw, not interpreted: field 4 has only ever read 0 and
+            # field 5 behaved as a minute counter in live polling (observed).
+            values["info_field_4_raw"] = fields[3]
+            values["info_field_5_raw"] = fields[4]
+        return values
     if not isinstance(value, str) or not value.startswith("+S1_INFO:"):
         return None
     match = re.fullmatch(

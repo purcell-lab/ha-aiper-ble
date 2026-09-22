@@ -74,7 +74,9 @@ potentially misleading standby fallback. Existing raw status/mode sensors stay.
 Version 0.11.0 adds `vacuum.aiper_surfer_s1` over the same data: `cleaning`
 for working or sunward, `idle` for standby, `docked` for charging or fully
 charged (Home Assistant's only charging-like activity; the robot has no dock),
-and no activity for updating or unknown codes. After a verified control the
+and no activity for updating or unknown codes; from 0.11.1 a non-zero raw
+warning code reports the `error` activity with the code as an attribute. After
+a verified control the
 entity shows the readback state, marked `state_source: control_readback`,
 until the next polling cycle replaces it. Its start and stop call the same
 bounded control path as the actions and are refused unless the
