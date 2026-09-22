@@ -1,11 +1,18 @@
 """Explicit bounded controls sharing the polling/probe mutex and transport."""
 
 import asyncio
+from typing import Any
 
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .coordinator import POLL_DETAIL_FIELDS, SUSPEND_CODES, verified_values
+from .coordinator import (
+    POLL_DETAIL_FIELDS,
+    SUSPEND_CODES,
+    AiperCoordinator,
+    cancel_requested,
+    verified_values,
+)
 from .errors import failure, validation
 from .protocol import Control, ProtocolError, Query
 from .s1_states import info_state
@@ -14,7 +21,7 @@ CONTROL_SERVICES = ("start_cleaning", "stop_cleaning")
 CONTROL_SECONDS = 180
 
 
-async def async_control(coordinator, action):
+async def async_control(coordinator: AiperCoordinator, action: str) -> dict[str, Any]:
     """Never queue, retry, toggle, change routes or optimistically publish state."""
     # Resolve at call time, as the coordinator does for both supported transports.
     from .coordinator import local_query_once, query_once
@@ -29,8 +36,8 @@ async def async_control(coordinator, action):
     # Reserve before the first await. Stop does not wait through the normal
     # five-minute telemetry cooldown, but cannot interrupt an owned BLE session.
     runtime.task = asyncio.current_task()
-    reports = []
-    result = {
+    reports: list[dict[str, Any]] = []
+    result: dict[str, Any] = {
         "action": action,
         "status": "not_sent",
         "acknowledged": False,
@@ -40,8 +47,8 @@ async def async_control(coordinator, action):
     }
     execute = local_query_once if coordinator.use_local_adapter else query_once
 
-    async def exchange(request):
-        report = {"query_type": request.query_type}
+    async def exchange(request: Query | Control) -> dict[str, Any]:
+        report: dict[str, Any] = {"query_type": request.query_type}
         reports.append(report)
         try:
             await execute(coordinator.hass, runtime.target, report, request)
@@ -60,7 +67,7 @@ async def async_control(coordinator, action):
                 coordinator.status = "suspended"
                 coordinator.error_code = "control_cleanup_or_protocol_requires_review"
                 coordinator.update_interval = None
-        if asyncio.current_task().cancelling():
+        if cancel_requested():
             raise asyncio.CancelledError
         if (
             coordinator.suspended
@@ -71,7 +78,7 @@ async def async_control(coordinator, action):
             raise ProtocolError("control_exchange_incomplete")
         return verified_values(report.get("protocol_response"), request)
 
-    def query(name):
+    def query(name: str) -> Query:
         return Query("omit_empty_crc", "request", coordinator.allow_missing, name)
 
     try:
