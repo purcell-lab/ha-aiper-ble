@@ -17,6 +17,7 @@ from .datapoints import opinfo_values, timezone
 from .local_bleak import query_once as local_bleak_query_once
 from .local_transport import query_once as local_query_once
 from .protocol import Control, ProtocolError, Query, crc16, query_telemetry
+from .s1_states import info_state
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_INTERVAL = 300
@@ -132,6 +133,9 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.last_poll_details = {}
         self.last_poll_queries = []
         self.last_control_result = {"status": "never_run"}
+        # Temperature captured only in cycles where the robot reports working.
+        self.water_temperature = None
+        self.water_temperature_at = None
         super().__init__(
             hass,
             LOGGER,
@@ -389,6 +393,15 @@ class AiperCoordinator(DataUpdateCoordinator):
                         verified_values(report.get("protocol_response"), query)
                     )
             values["last_success"] = dt_util.utcnow()
+            if (
+                values.get("info_status_raw") == 1
+                and info_state(values) == "working"
+                and values.get("temperature") is not None
+            ):
+                # The only cycles in which the robot is certainly in the water
+                # and moving; the sensor's physical location stays unverified.
+                self.water_temperature = values["temperature"]
+                self.water_temperature_at = values["last_success"]
             self.failures = 0
             self.status = "ok"
             self.error_code = None

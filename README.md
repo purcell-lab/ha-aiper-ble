@@ -216,6 +216,16 @@ reloads the entry and runs one poll if polling is enabled.
 | Use saved local adapter directly (no proxies or Bleak) | off | Uses the BlueZ adapter saved at setup instead of HA-managed routes and proxies. Requires local adapter metadata in the entry. |
 | Enable vacuum entity start/stop | off | Lets the vacuum entity's buttons send the guarded start and stop commands without a per-call confirmation. Turn on only while the robot is in the water, unplugged, nobody is in the pool and the app is closed. |
 
+## Water temperature
+
+`sensor.aiper_ble_water_temperature` holds the temperature read in the most
+recent polling cycle in which the robot reported working, when it is certainly
+in the water. The ordinary temperature sensor updates every cycle, including on
+the charger. This one keeps its value between cleaning sessions and across
+restarts, with `measured_at` in local time. The probe's physical location is
+still unverified, so treat it as "temperature seen by the robot while
+cleaning" rather than a calibrated pool thermometer.
+
 ## Vacuum entity
 
 `vacuum.aiper_surfer_s1` shows the robot's INFO-derived state as a Home

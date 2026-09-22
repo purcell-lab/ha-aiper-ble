@@ -1,6 +1,7 @@
 """CRC-verified S1 telemetry and separate diagnostic result indicators."""
 
 from homeassistant.components.sensor import (
+    RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
@@ -9,6 +10,7 @@ from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
+from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import DOMAIN, SIGNAL_RESULT
@@ -28,6 +30,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             *[TelemetrySensor(entry, key) for key in SENSOR_NAMES],
             PollingStatusSensor(entry),
             OperatingStateSensor(entry),
+            WaterTemperatureSensor(entry),
         ]
     )
 
@@ -189,3 +192,55 @@ class ResultSensor(SensorEntity):
         self.async_on_remove(
             async_dispatcher_connect(self.hass, SIGNAL_RESULT, updated)
         )
+
+
+class WaterTemperatureSensor(AiperEntity, RestoreSensor):
+    """Temperature read only while the robot reports working.
+
+    The general temperature sensor updates every cycle, on the charger too.
+    This one keeps the last reading taken while INFO said working, when the
+    robot is certainly in the water, and holds it between cleaning sessions
+    and across restarts. Where the probe sits remains unverified.
+    """
+
+    _attr_device_class = SensorDeviceClass.TEMPERATURE
+    _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, entry):
+        super().__init__(entry, "water_temperature")
+        self.entity_id = "sensor.aiper_ble_water_temperature"
+
+    async def async_added_to_hass(self):
+        await super().async_added_to_hass()
+        coordinator = self.coordinator
+        if coordinator.water_temperature is not None:
+            return
+        data = await self.async_get_last_sensor_data()
+        if data is None or data.native_value is None:
+            return
+        coordinator.water_temperature = data.native_value
+        state = await self.async_get_last_state()
+        measured = state.attributes.get("measured_at") if state else None
+        coordinator.water_temperature_at = (
+            dt_util.parse_datetime(measured) if measured else None
+        )
+
+    @property
+    def available(self):
+        return self.polling_active and self.coordinator.water_temperature is not None
+
+    @property
+    def native_value(self):
+        return self.coordinator.water_temperature
+
+    @property
+    def extra_state_attributes(self):
+        measured = self.coordinator.water_temperature_at
+        return {
+            "measured_at": (
+                dt_util.as_local(measured).isoformat() if measured else None
+            ),
+            "source": "S1_INFO_temperature_in_working_cycle",
+            "temperature_sensor_location": "unverified",
+        }
