@@ -120,6 +120,10 @@ class OptionsFlow(config_entries.OptionsFlow):
                         "use_local_adapter",
                         default=current.get("use_local_adapter", False),
                     ): bool,
+                    vol.Optional(
+                        "confirm_vacuum_controls",
+                        default=current.get("confirm_vacuum_controls", False),
+                    ): bool,
                 }
             ),
             errors=errors,
