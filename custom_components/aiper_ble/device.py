@@ -1,11 +1,12 @@
 """Stable, integration-scoped identity without merging unrelated cloud devices."""
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.device_registry import CONNECTION_BLUETOOTH, DeviceInfo
 
 from .const import DOMAIN
 
 
-def device_info(entry):
+def device_info(entry: ConfigEntry) -> DeviceInfo:
     """Group entities without changing their existing unique IDs or names.
 
     The Bluetooth connection lets HA's device page show its Bluetooth section

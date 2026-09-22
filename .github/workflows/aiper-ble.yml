@@ -23,3 +23,4 @@ jobs:
       - run: ruff check --config ruff-aiper.toml custom_components/aiper_ble tests/aiper_ble
       - run: ruff format --config ruff-aiper.toml --check custom_components/aiper_ble tests/aiper_ble
       - run: python -m pytest -q tests/aiper_ble --disable-socket --allow-unix-socket --asyncio-mode=auto
+      - run: python -m mypy --config-file mypy.ini

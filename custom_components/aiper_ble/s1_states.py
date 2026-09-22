@@ -1,5 +1,7 @@
 """S1 INFO-derived states, independently traced from Android 3.6.1 build 82."""
 
+from collections.abc import Mapping
+
 INFO_STATES = (
     "standby",
     "working",
@@ -11,7 +13,7 @@ INFO_STATES = (
 )
 
 
-def info_state(values):
+def info_state(values: Mapping[str, object]) -> str:
     """Decode INFO, not the app's connectivity/warning/OTA overlay enum.
 
     Unknown status values deliberately do not inherit the app's standby fallback.

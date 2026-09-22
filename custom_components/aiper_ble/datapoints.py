@@ -1,6 +1,7 @@
 """Explicit scalar DP allowlists; never turn arbitrary response keys into states."""
 
 import re
+from typing import Any
 
 OPINFO_FIELDS = {
     "bat": "Aiper BLE OpInfo battery raw",
@@ -72,7 +73,7 @@ DEFAULT_ENABLED = frozenset(
 )
 
 
-def integer(value, *, bits=32):
+def integer(value: object, *, bits: int = 32) -> int | None:
     """App fields are signed Java Integer/Long; booleans are not numeric DPs."""
     return (
         value
@@ -81,7 +82,7 @@ def integer(value, *, bits=32):
     )
 
 
-def network_name(value):
+def network_name(value: object) -> str | None:
     """An SSID is text, at most 32 UTF-8 bytes; never stringify containers."""
     if not isinstance(value, str) or not value or not value.isprintable():
         return None
@@ -91,14 +92,14 @@ def network_name(value):
         return None
 
 
-def timezone(value):
+def timezone(value: object) -> str | None:
     """Expose bounded time-zone metadata, not arbitrary response strings."""
     if isinstance(value, str) and re.fullmatch(r"[A-Za-z0-9_+:/.-]{1,64}", value):
         return value
     return None
 
 
-def opinfo_values(data):
+def opinfo_values(data: dict[str, Any]) -> dict[str, int | str | None]:
     """Direct OpInfo fields and optional nested Machine candidates stay distinct.
 
     The nested Machine shape was an existing protocol candidate allowlist, not
