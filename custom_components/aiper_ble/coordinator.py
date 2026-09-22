@@ -7,7 +7,6 @@ import math
 from datetime import timedelta
 
 from homeassistant.core import callback
-from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -15,6 +14,7 @@ from homeassistant.util import dt as dt_util
 from .bluetooth_transport import query_once
 from .const import DOMAIN
 from .datapoints import opinfo_values, timezone
+from .errors import validation
 from .local_bleak import query_once as local_bleak_query_once
 from .local_transport import query_once as local_query_once
 from .protocol import Control, ProtocolError, Query, crc16, query_telemetry
@@ -193,11 +193,11 @@ class AiperCoordinator(DataUpdateCoordinator):
         No await precedes _async_update_data's existing runtime task reservation.
         """
         if not self.enabled or self.runtime.closing:
-            raise ServiceValidationError("Enable authorised polling first.")
+            raise validation("enable_polling_first")
         if self.suspended:
-            raise ServiceValidationError("Polling suspended; review diagnostics first.")
+            raise validation("polling_suspended")
         if self.runtime.task and not self.runtime.task.done():
-            raise ServiceValidationError("A poll or probe is already running.")
+            raise validation("already_running")
         self.next_attempt = 0.0
         try:
             data = await self._async_update_data()
@@ -225,24 +225,22 @@ class AiperCoordinator(DataUpdateCoordinator):
         task mutex, protocol verification and cleanup suspension.
         """
         if query_type not in ISOLATED_QUERIES.values():
-            raise ServiceValidationError("Select a fixed diagnostic query.")
+            raise validation("select_fixed_query")
         if local_bleak and query_type != "OpInfo":
-            raise ServiceValidationError("Same-radio diagnostics allow only OpInfo.")
+            raise validation("same_radio_opinfo_only")
         if proxy_entry_id is not None and (local_bleak or query_type != "OpInfo"):
-            raise ServiceValidationError("Proxy trace allows only one OpInfo query.")
+            raise validation("proxy_trace_opinfo_only")
         if self.enabled:
-            raise ServiceValidationError("Disable recurring polling before bisection.")
+            raise validation("disable_polling_for_bisection")
         if self.runtime.closing or self.suspended:
-            raise ServiceValidationError("Integration closing or polling suspended.")
+            raise validation("closing_or_suspended")
         if self.runtime.task and not self.runtime.task.done():
-            raise ServiceValidationError("A poll or probe is already running.")
+            raise validation("already_running")
         now = asyncio.get_running_loop().time()
         if self.last_attempt_finished is not None:
             remaining = self.interval - (now - self.last_attempt_finished)
             if remaining > 0:
-                raise ServiceValidationError(
-                    f"Polling cooldown: retry in {math.ceil(remaining)} seconds."
-                )
+                raise validation("cooldown", seconds=math.ceil(remaining))
         # No await before reservation: all diagnostic actions use this mutex.
         self.runtime.task = asyncio.current_task()
         report = {"query_type": query_type}

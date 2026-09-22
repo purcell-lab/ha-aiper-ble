@@ -2,11 +2,11 @@
 
 import asyncio
 
-from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
 from .coordinator import POLL_DETAIL_FIELDS, SUSPEND_CODES, verified_values
+from .errors import failure, validation
 from .protocol import Control, ProtocolError, Query
 from .s1_states import info_state
 
@@ -21,13 +21,11 @@ async def async_control(coordinator, action):
 
     runtime = coordinator.runtime
     if action not in CONTROL_SERVICES:
-        raise ServiceValidationError("Select start_cleaning or stop_cleaning.")
+        raise validation("select_control")
     if runtime.closing or coordinator.suspended:
-        raise ServiceValidationError(
-            "Integration closing or suspended; review diagnostics."
-        )
+        raise validation("control_closing_or_suspended")
     if runtime.task and not runtime.task.done():
-        raise ServiceValidationError("A poll, probe or control is already running.")
+        raise validation("control_busy")
     # Reserve before the first await. Stop does not wait through the normal
     # five-minute telemetry cooldown, but cannot interrupt an owned BLE session.
     runtime.task = asyncio.current_task()
@@ -142,8 +140,5 @@ async def async_control(coordinator, action):
                 UpdateFailed("Refresh telemetry after control.")
             )
     if not result["state_verified"]:
-        raise HomeAssistantError(
-            f"Cleaning control {result['status']}; inspect diagnostics and robot. "
-            "No automatic retry. BLE stop is not an emergency stop."
-        )
+        raise failure("control_unconfirmed", status=result["status"])
     return dict(result)

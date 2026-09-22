@@ -5,11 +5,11 @@ from homeassistant.components.vacuum import (
     VacuumActivity,
     VacuumEntityFeature,
 )
-from homeassistant.exceptions import ServiceValidationError
 from homeassistant.util import dt as dt_util
 
 from .controls import async_control
 from .entity import AiperEntity
+from .errors import validation
 from .s1_states import info_state
 
 VACUUM_CONTROLS_OPTION = "confirm_vacuum_controls"
@@ -140,11 +140,7 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
 
     async def _run(self, action):
         if self.entry.options.get(VACUUM_CONTROLS_OPTION) is not True:
-            raise ServiceValidationError(
-                "Vacuum controls are disabled. Enable them in the integration's "
-                "options once the robot is in water, unplugged and nobody is in "
-                "the pool, and keep the app closed."
-            )
+            raise validation("vacuum_controls_disabled")
         await async_control(self.coordinator, action)
 
     async def async_start(self):

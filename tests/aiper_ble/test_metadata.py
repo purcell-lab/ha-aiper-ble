@@ -26,6 +26,13 @@ def test_manifest_discovery_matchers_icons_and_no_external_requirements():
     assert set(icons["services"]) == set(services)
 
 
+def test_exception_translations_mirror_the_message_table():
+    from custom_components.aiper_ble.errors import MESSAGES
+
+    strings = json.loads((COMPONENT / "strings.json").read_text())
+    assert strings["exceptions"] == {k: {"message": v} for k, v in MESSAGES.items()}
+
+
 def test_service_descriptions_and_translation_match():
     strings = json.loads((COMPONENT / "strings.json").read_text())
     english = json.loads((COMPONENT / "translations" / "en.json").read_text())
