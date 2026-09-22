@@ -550,6 +550,23 @@ async def test_failed_manual_cleanup_suspends_automatic_polling(hass, transport)
     assert len(transport[0]) == 4
 
 
+async def test_refused_tick_lands_next_tick_at_cooldown_end(hass, transport):
+    """A control moves the cooldown; HA's next tick must follow it, not add an interval."""
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    before = len(transport[0])
+    coordinator.last_update_success = False
+    coordinator.next_attempt = asyncio.get_running_loop().time() + 120
+    await coordinator.async_refresh()
+    assert len(transport[0]) == before  # refused, no BLE activity
+    assert not coordinator.last_update_success
+    assert 118 <= coordinator.update_interval.total_seconds() <= 121
+    coordinator.next_attempt = 0
+    await coordinator.async_refresh()
+    assert len(transport[0]) == before + 4
+    assert coordinator.update_interval.total_seconds() == coordinator.interval
+
+
 async def test_timer_jitter_does_not_skip_cycle(hass, transport):
     entry = await setup(hass)
     coordinator = entry.runtime_data.coordinator
