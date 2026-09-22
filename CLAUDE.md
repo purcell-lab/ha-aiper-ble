@@ -28,6 +28,14 @@ produced for this project.
 - The Home Assistant MCP webhook URL is session-only. Never write it into
   the repository or GitHub.
 
+## Releases
+
+- Every pull request that changes code under `custom_components/` bumps the
+  manifest version. The Release workflow tags and publishes a GitHub release
+  for the manifest version on merge to main; never push tags by hand.
+- HACS reads the integration's domain and install path from the latest
+  release, so deploy after the release exists.
+
 ## Bluetooth actions
 
 - Do not trigger a poll, probe, proxy trace or any other BLE action without

@@ -236,14 +236,19 @@ async def test_all_dp_entities_registered_and_updated_from_full_reply(hass, radi
         for state in hass.states.async_all()
         if state.entity_id.startswith("sensor.aiper_ble_")
     ]
-    assert len(states) == 10
+    assert len(states) == 11
     data = entry.runtime_data.coordinator.data
     assert data["temperature_raw"] == 215.0
     assert data["s1_timezone"] == "UTC+10"
     assert data["opinfo_bat_raw"] == 73
     assert data["wifi_name"] == "Test network"
     assert hass.states.get("sensor.aiper_ble_opinfo_battery_raw") is None
-    assert all(state.state != "unavailable" for state in states)
+    # Water temperature waits for a working cycle; the fixture reports charging.
+    assert all(
+        state.state != "unavailable"
+        for state in states
+        if state.entity_id != "sensor.aiper_ble_water_temperature"
+    )
 
 
 @pytest.mark.parametrize(

@@ -81,6 +81,9 @@
       "discovery_result": {
         "name": "Discovery result"
       },
+      "water_temperature": {
+        "name": "Water temperature"
+      },
       "operating_state": {
         "name": "Operating state",
         "state": {
