@@ -9,6 +9,8 @@ from unittest.mock import patch
 
 import pytest
 from homeassistant import config_entries
+from homeassistant.const import EVENT_HOMEASSISTANT_STARTED
+from homeassistant.core import CoreState
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
@@ -161,6 +163,51 @@ async def setup(hass, options=None):
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
     return entry
+
+
+async def test_first_poll_waits_for_startup_and_proxy_settle(hass, transport):
+    """During HA startup only hci0 is known; the first cycle must wait."""
+    hass.set_state(CoreState.starting)
+    entry = await setup(hass)
+    coordinator = entry.runtime_data.coordinator
+    assert transport[0] == []
+    assert coordinator.status == "waiting"
+    assert hass.states.get("sensor.aiper_ble_polling_status").state == "waiting"
+    assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert transport[0] == []
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=44))
+    await hass.async_block_till_done()
+    assert transport[0] == []
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=46))
+    await hass.async_block_till_done()
+    assert len(transport[0]) == 4
+    assert coordinator.status == "ok"
+    assert hass.states.get("sensor.aiper_ble_temperature").state == "21.5"
+    # Unloading after the deferred poll must not log an unknown-listener error.
+    assert await hass.config_entries.async_unload(entry.entry_id)
+
+
+async def test_deferred_first_poll_cancelled_by_unload(hass, transport):
+    hass.set_state(CoreState.starting)
+    entry = await setup(hass)
+    hass.set_state(CoreState.running)
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STARTED)
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_unload(entry.entry_id)
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=60))
+    await hass.async_block_till_done()
+    assert transport[0] == []
+
+
+async def test_reload_while_running_polls_immediately(hass, transport):
+    entry = await setup(hass)
+    assert len(transport[0]) == 4
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert len(transport[0]) == 8
 
 
 async def test_device_carries_bluetooth_connection_for_device_page(hass, transport):
