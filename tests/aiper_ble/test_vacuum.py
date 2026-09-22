@@ -1,11 +1,14 @@
 """Vacuum entity: verified state only, option-gated controls, no optimism."""
 
+from datetime import timedelta
 from unittest.mock import patch
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
+from custom_components.aiper_ble.coordinator import POST_CONTROL_SECONDS
 from custom_components.aiper_ble.protocol import Control
 from custom_components.aiper_ble.vacuum import ACTIVITIES
 
@@ -148,13 +151,35 @@ async def test_option_enabled_controls_use_guarded_path_and_readback(
     assert state.attributes["state_source"] == "control_readback"
     assert state.attributes["controls_enabled"] is True
     assert hass.states.get("sensor.aiper_ble_battery").state == "unavailable"
-    # The next verified cycle takes over again (the automatic one waits a full
-    # interval after the control; an explicit poll runs at once).
+    # The next verified cycle takes over again (an explicit poll runs at once;
+    # otherwise the post-control cycle confirms it after POST_CONTROL_SECONDS).
     await coordinator.async_poll_now()
     await hass.async_block_till_done()
     state = hass.states.get(ENTITY)
     assert state.state == "docked"
     assert state.attributes["state_source"] == "polling_cycle"
+
+
+async def test_verified_control_is_confirmed_by_a_quick_cycle(hass, transport):
+    entry = await setup(hass, ENABLED)
+    coordinator = entry.runtime_data.coordinator
+    with patch(f"{PATH}.coordinator.query_once", fake_exchange([], after="0,0,80")):
+        await vacuum_call(hass, "stop")
+    assert hass.states.get(ENTITY).attributes["state_source"] == "control_readback"
+    before = len(transport[0])
+    async_fire_time_changed(
+        hass, dt_util.utcnow() + timedelta(seconds=POST_CONTROL_SECONDS - 5)
+    )
+    await hass.async_block_till_done()
+    assert len(transport[0]) == before  # not before the settle period
+    async_fire_time_changed(
+        hass, dt_util.utcnow() + timedelta(seconds=POST_CONTROL_SECONDS + 1)
+    )
+    await hass.async_block_till_done()
+    assert len(transport[0]) == before + 4
+    assert coordinator.status == "ok"
+    assert hass.states.get(ENTITY).attributes["state_source"] == "polling_cycle"
+    assert coordinator.update_interval.total_seconds() == coordinator.interval
 
 
 async def test_unconfirmed_control_raises_and_leaves_no_trusted_state(hass, transport):

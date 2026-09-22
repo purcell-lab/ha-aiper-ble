@@ -248,7 +248,7 @@ async def test_one_device_all_entities_stable_after_reload(hass, transport):
     # the separate cloud integration's device.
     assert device.connections == {(dr.CONNECTION_BLUETOOTH, TARGET.address)}
     records = er.async_entries_for_config_entry(entities, entry.entry_id)
-    assert len(records) == 16
+    assert len(records) == 20
     assert {r.device_id for r in records} == {device.id}
     before = {(r.entity_id, r.unique_id) for r in records}
     assert "sensor.aiper_ble_temperature" in {r.entity_id for r in records}
@@ -271,4 +271,4 @@ async def test_one_device_all_entities_stable_after_reload(hass, transport):
     await hass.async_block_till_done()
     assert hass.states.get("sensor.pool_robot_temperature").state == "21.5"
     assert entities.async_get("sensor.aiper_ble_temperature") is None
-    assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 16
+    assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 20

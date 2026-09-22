@@ -40,6 +40,20 @@
       },
       "wifi_name": {
         "default": "mdi:wifi"
+      },
+      "signal_strength": {
+        "default": "mdi:bluetooth"
+      }
+    },
+    "button": {
+      "poll_now": {
+        "default": "mdi:refresh"
+      },
+      "start_cleaning": {
+        "default": "mdi:play"
+      },
+      "stop_cleaning": {
+        "default": "mdi:stop"
       }
     }
   },

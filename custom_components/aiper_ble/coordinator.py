@@ -9,8 +9,9 @@ from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -37,6 +38,8 @@ MIN_INTERVAL = 300
 MAX_INTERVAL = 3600
 POLL_SECONDS = 180
 SINGLE_QUERY_SECONDS = 60
+# A verified control is confirmed by a full cycle this long after it finishes.
+POST_CONTROL_SECONDS = 20
 LOCAL_POLL_QUERIES = ("S1_INFO", "INFO")
 HA_POLL_QUERIES = ("S1_INFO", "OpInfo", "INFO", "WARN")
 LOCAL_BLEAK_SERVICE = "query_opinfo_local_bleak"
@@ -157,6 +160,7 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Temperature captured only in cycles where the robot reports working.
         self.water_temperature: float | None = None
         self.water_temperature_at: datetime | None = None
+        self._post_control_timer: CALLBACK_TYPE | None = None
         super().__init__(
             hass,
             LOGGER,
@@ -203,6 +207,69 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.async_set_update_error(error)
         if not was_successful:
             self.async_update_listeners()
+
+    @property
+    def last_route(self) -> dict[str, Any] | None:
+        """Backend, scanner type and signal of the last cycle's selected route."""
+        if not self.last_poll_queries:
+            return None
+        diagnostics = self.last_poll_queries[-1].get("transport_diagnostics") or {}
+        route: dict[str, Any] = {"backend": diagnostics.get("backend")}
+        snapshot = (diagnostics.get("route_snapshots") or {}).get("before_connect")
+        for candidate in (snapshot or {}).get("routes", []):
+            if candidate.get("route_id") == diagnostics.get("selected_route"):
+                route["scanner_type"] = candidate.get("scanner_type")
+                route["rssi_dbm"] = candidate.get("rssi_dbm")
+        return route
+
+    @property
+    def signal_strength(self) -> int | float | None:
+        """RSSI of the route the last cycle connected through, in dBm.
+
+        HA routing reports the selected proxy's reading just before the
+        connection; the pinned local adapter reports its own pre-connect
+        reading. Nothing is inferred when the cycle never selected a route.
+        """
+        route = self.last_route
+        if route is None:
+            return None
+        value = route.get("rssi_dbm")
+        if value is None:
+            value = self.last_poll_queries[-1].get("preconnect_rssi_dbm")
+        return value if isinstance(value, (int, float)) else None
+
+    @callback
+    def schedule_post_control_poll(self) -> None:
+        """Confirm a control with a full cycle shortly after it, not an interval later.
+
+        Regular ticks stay refused until then; the timer clears the cooldown
+        and requests the cycle, which then reschedules the normal interval.
+        """
+        self.cancel_post_control_poll()
+        self.next_attempt = asyncio.get_running_loop().time() + POST_CONTROL_SECONDS
+        self._post_control_timer = async_call_later(
+            self.hass, POST_CONTROL_SECONDS, self._post_control_poll
+        )
+
+    @callback
+    def cancel_post_control_poll(self) -> None:
+        if self._post_control_timer is not None:
+            self._post_control_timer()
+            self._post_control_timer = None
+
+    @callback
+    def _post_control_poll(self, _now: datetime) -> None:
+        self._post_control_timer = None
+        if not self.enabled or self.runtime.closing or self.suspended:
+            return
+        if self.runtime.task and not self.runtime.task.done():
+            return  # a cycle or probe is already running; it confirms the state
+        self.next_attempt = 0.0
+        self.hass.async_create_task(self.async_request_refresh())
+
+    async def async_shutdown(self) -> None:
+        self.cancel_post_control_poll()
+        await super().async_shutdown()
 
     @callback
     def mark_stale(self, reason: str) -> None:

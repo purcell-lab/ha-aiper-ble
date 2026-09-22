@@ -46,7 +46,7 @@ from .probe import Target, open_bluez
 from .probe import probe as run_probe
 from .protocol import Listen, Query, preview
 
-PLATFORMS = [Platform.SENSOR, Platform.VACUUM]
+PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.VACUUM]
 STARTUP_SETTLE_SECONDS = 45
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

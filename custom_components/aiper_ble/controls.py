@@ -3,6 +3,7 @@
 import asyncio
 from typing import Any
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -19,6 +20,18 @@ from .s1_states import info_state
 
 CONTROL_SERVICES = ("start_cleaning", "stop_cleaning")
 CONTROL_SECONDS = 180
+# Entity-initiated controls (vacuum, buttons) are gated by this standing option
+# instead of the per-call confirmations the actions take.
+VACUUM_CONTROLS_OPTION = "confirm_vacuum_controls"
+
+
+async def async_entity_control(
+    entry: ConfigEntry, coordinator: AiperCoordinator, action: str
+) -> None:
+    """Run a control for an entity; the option is the owner's standing consent."""
+    if entry.options.get(VACUUM_CONTROLS_OPTION) is not True:
+        raise validation("vacuum_controls_disabled")
+    await async_control(coordinator, action)
 
 
 async def async_control(coordinator: AiperCoordinator, action: str) -> dict[str, Any]:
@@ -147,6 +160,8 @@ async def async_control(coordinator: AiperCoordinator, action: str) -> dict[str,
                 coordinator.error_code = (
                     None if result["state_verified"] else "control_state_unconfirmed"
                 )
+                # A full cycle confirms the readback shortly, not an interval later.
+                coordinator.schedule_post_control_poll()
                 coordinator.mark_stale("Refresh telemetry after control.")
     if not result["state_verified"]:
         raise failure("control_unconfirmed", status=result["status"])
