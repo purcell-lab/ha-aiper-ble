@@ -10,8 +10,10 @@ compatibility with existing installations.
 Adds an INFO-derived operating-state enum sensor and explicit `start_cleaning`
 and `stop_cleaning` BLE actions. Actions require per-call safety confirmation,
 share the polling lock, never retry and verify a separate INFO readback.
-These commands are traced from Android 3.6.1 but are not yet live-validated.
-They are never sent automatically by polling. See
+These commands are traced from Android 3.6.1 and were live-validated on the
+owner's robot on 22 September 2026 (AEST): one stop and one start, each
+acknowledged and verified by INFO readback, with motion confirmed from signal
+drift. They are never sent automatically by polling. See
 [S1 states and controls](docs/s1_states_and_controls.md) before use.
 
 The consolidated [reverse-engineered endpoint reference](docs/reverse_engineered_endpoints.md)
