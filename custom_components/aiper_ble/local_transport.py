@@ -1,10 +1,20 @@
 """Pinned local BlueZ queries, without Bleak or proxy fallback."""
 
-from .probe import open_bluez, probe
+from typing import Any
+
+from homeassistant.core import HomeAssistant
+
+from .probe import Target, open_bluez, probe
+from .protocol import Control, Query
 from .transport_diagnostics import TransportDiagnostics
 
 
-async def query_once(hass, target, report, query):
+async def query_once(
+    hass: HomeAssistant,
+    target: Target,
+    report: dict[str, Any],
+    query: Query | Control,
+) -> None:
     """Reuse the original guarded transport; verification stays in coordinator."""
     report.update(
         transport="local_bluez",

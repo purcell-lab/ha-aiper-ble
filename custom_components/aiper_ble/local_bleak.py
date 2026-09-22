@@ -6,13 +6,15 @@ not a production routing option or an automatic fallback.
 
 import asyncio
 from importlib.metadata import version
+from typing import Any
 
 from bleak.backends.bluezdbus.client import BleakClientBlueZDBus
 from bluetooth_data_tools import monotonic_time_coarse
 from habluetooth.wrappers import HaBleakClientWrapper
+from homeassistant.core import HomeAssistant
 
-from .probe import open_bluez
-from .protocol import ProtocolError
+from .probe import Target, open_bluez
+from .protocol import Control, ProtocolError, Query
 
 SUPPORTED_VERSIONS = {
     "habluetooth": "6.26.11",
@@ -124,7 +126,12 @@ def pinned_client_class(base, target, diagnostics, versions):
     return PinnedLocalClient
 
 
-async def query_once(hass, target, report, query):
+async def query_once(
+    hass: HomeAssistant,
+    target: Target,
+    report: dict[str, Any],
+    query: Query | Control,
+) -> None:
     """Use the common query lifecycle, not a second transport implementation."""
     from .bluetooth_transport import query_once as managed_query
 

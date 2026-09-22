@@ -8,15 +8,18 @@ import asyncio
 import re
 from importlib.metadata import version
 from ipaddress import ip_address
+from typing import Any
 
 from aioesphomeapi import APIClient, LogLevel
 from bleak_esphome.backend.client import ESPHomeClient
 from bluetooth_data_tools import monotonic_time_coarse
 from habluetooth import get_manager
 from habluetooth.wrappers import HaBleakClientWrapper
+from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
-from .protocol import ProtocolError
+from .probe import Target
+from .protocol import Control, ProtocolError, Query
 
 SUPPORTED_VERSIONS = {
     "habluetooth": "6.26.11",
@@ -372,7 +375,13 @@ def assert_proxy_backend(client, target, source):
         raise ProtocolError("proxy_trace_backend_mismatch")
 
 
-async def query_once(hass, target, report, query, entry_id):
+async def query_once(
+    hass: HomeAssistant,
+    target: Target,
+    report: dict[str, Any],
+    query: Query | Control,
+    entry_id: str,
+) -> None:
     """One fixed OpInfo query, with logging on a separate API connection."""
     from .bluetooth_transport import query_once as managed_query
 

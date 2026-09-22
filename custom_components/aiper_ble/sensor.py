@@ -1,15 +1,20 @@
 """CRC-verified S1 telemetry and separate diagnostic result indicators."""
 
+from datetime import datetime
+from typing import Any
+
 from homeassistant.components.sensor import (
     RestoreSensor,
     SensorDeviceClass,
     SensorEntity,
     SensorStateClass,
 )
-from homeassistant.const import PERCENTAGE, UnitOfTemperature
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
-from homeassistant.helpers.entity import EntityCategory
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
+from homeassistant.helpers.typing import StateType
 from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
@@ -23,7 +28,11 @@ from .s1_states import INFO_STATES, info_state
 PARALLEL_UPDATES = 0
 
 
-async def async_setup_entry(hass, entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
     async_add_entities(
         [
             ResultSensor(entry),
@@ -38,7 +47,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class TelemetrySensor(AiperEntity, SensorEntity):
     """Never publish unverified data or claim a temperature sensor location."""
 
-    def __init__(self, entry, key):
+    def __init__(self, entry: ConfigEntry, key: str) -> None:
         super().__init__(entry, key)
         self._attr_entity_registry_enabled_default = key in DEFAULT_ENABLED
         # Fixed IDs from the historical names; HA still honours user-renamed IDs.
@@ -57,7 +66,7 @@ class TelemetrySensor(AiperEntity, SensorEntity):
             self._attr_device_class = SensorDeviceClass.TIMESTAMP
 
     @property
-    def available(self):
+    def available(self) -> bool:
         return (
             self.polling_active
             # Measured values disappear as soon as a cycle fails, so no stale
@@ -71,8 +80,9 @@ class TelemetrySensor(AiperEntity, SensorEntity):
         )
 
     @property
-    def native_value(self):
-        return (self.coordinator.data or {}).get(self.key)
+    def native_value(self) -> StateType | datetime:
+        value: StateType | datetime = (self.coordinator.data or {}).get(self.key)
+        return value
 
 
 class OperatingStateSensor(AiperEntity, SensorEntity):
@@ -81,12 +91,12 @@ class OperatingStateSensor(AiperEntity, SensorEntity):
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(INFO_STATES)
 
-    def __init__(self, entry):
+    def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "operating_state")
         self.entity_id = "sensor.aiper_ble_operating_state"
 
     @property
-    def available(self):
+    def available(self) -> bool:
         return (
             self.polling_active
             and super().available
@@ -95,11 +105,11 @@ class OperatingStateSensor(AiperEntity, SensorEntity):
         )
 
     @property
-    def native_value(self):
+    def native_value(self) -> str:
         return info_state(self.coordinator.data or {})
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, str]:
         return {
             "evidence": "Android_3.6.1_S1StatusInfo_INFO_subset",
             "warning_connectivity_and_external_ota_overlays": "not_inferred",
@@ -111,20 +121,20 @@ class PollingStatusSensor(AiperEntity, SensorEntity):
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
 
-    def __init__(self, entry):
+    def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "polling_status")
         self.entity_id = "sensor.aiper_ble_polling_status"
 
     @property
-    def available(self):
+    def available(self) -> bool:
         return True
 
     @property
-    def native_value(self):
+    def native_value(self) -> str:
         return self.coordinator.status
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         return {
             "error_code": self.coordinator.error_code,
             "consecutive_failures": self.coordinator.failures,
@@ -148,18 +158,19 @@ class ResultSensor(SensorEntity):
     _attr_has_entity_name = True
     _attr_translation_key = "discovery_result"
 
-    def __init__(self, entry):
+    def __init__(self, entry: ConfigEntry) -> None:
         self.entry = entry
         self._attr_device_info = device_info(entry)
         self._attr_unique_id = f"{entry.entry_id}_discovery_result"
         self.entity_id = "sensor.aiper_ble_discovery_result"
 
     @property
-    def native_value(self):
-        return self.entry.runtime_data.last_result["status"]
+    def native_value(self) -> str:
+        status: str = self.entry.runtime_data.last_result["status"]
+        return status
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         result = self.entry.runtime_data.last_result
         return {
             "entry_id": self.entry.entry_id,
@@ -181,9 +192,9 @@ class ResultSensor(SensorEntity):
             },
         }
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         @callback
-        def updated(entry_id):
+        def updated(entry_id: str) -> None:
             if entry_id == self.entry.entry_id:
                 self.async_write_ha_state()
 
@@ -205,17 +216,17 @@ class WaterTemperatureSensor(AiperEntity, RestoreSensor):
     _attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(self, entry):
+    def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "water_temperature")
         self.entity_id = "sensor.aiper_ble_water_temperature"
 
-    async def async_added_to_hass(self):
+    async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
         coordinator = self.coordinator
         if coordinator.water_temperature is not None:
             return
         data = await self.async_get_last_sensor_data()
-        if data is None or data.native_value is None:
+        if data is None or not isinstance(data.native_value, (int, float)):
             return
         coordinator.water_temperature = data.native_value
         state = await self.async_get_last_state()
@@ -225,15 +236,15 @@ class WaterTemperatureSensor(AiperEntity, RestoreSensor):
         )
 
     @property
-    def available(self):
+    def available(self) -> bool:
         return self.polling_active and self.coordinator.water_temperature is not None
 
     @property
-    def native_value(self):
+    def native_value(self) -> float | None:
         return self.coordinator.water_temperature
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, str | None]:
         measured = self.coordinator.water_temperature_at
         return {
             "measured_at": (

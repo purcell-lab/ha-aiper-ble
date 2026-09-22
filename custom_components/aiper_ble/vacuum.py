@@ -1,10 +1,15 @@
 """Vacuum entity over the same guarded, verified S1 start/stop controls."""
 
+from typing import Any
+
 from homeassistant.components.vacuum import (
     StateVacuumEntity,
     VacuumActivity,
     VacuumEntityFeature,
 )
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from .controls import async_control
@@ -29,7 +34,11 @@ ACTIVITIES = {
 }
 
 
-async def async_setup_entry(hass, entry, async_add_entities):
+async def async_setup_entry(
+    hass: HomeAssistant,
+    entry: ConfigEntry,
+    async_add_entities: AddConfigEntryEntitiesCallback,
+) -> None:
     async_add_entities([AiperVacuum(entry)])
 
 
@@ -48,12 +57,12 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
         VacuumEntityFeature.START | VacuumEntityFeature.STOP | VacuumEntityFeature.STATE
     )
 
-    def __init__(self, entry):
+    def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "vacuum")
         self._attr_translation_key = None
         self.entity_id = "vacuum.aiper_surfer_s1"
 
-    def _control_readback(self):
+    def _control_readback(self) -> dict[str, Any] | None:
         """A verified readback stands in until the next poll replaces it."""
         result = self.coordinator.last_control_result
         if (
@@ -65,7 +74,7 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
         return None
 
     @property
-    def available(self):
+    def available(self) -> bool:
         coordinator = self.coordinator
         if not self.polling_active or coordinator.suspended:
             return False
@@ -78,7 +87,7 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
         )
 
     @property
-    def activity(self):
+    def activity(self) -> VacuumActivity | None:
         readback = self._control_readback()
         if readback is not None:
             return ACTIVITIES.get(readback["observed_state"])
@@ -88,13 +97,13 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
             return VacuumActivity.ERROR
         return ACTIVITIES.get(info_state(data))
 
-    def _last_route(self):
+    def _last_route(self) -> dict[str, Any] | None:
         """Backend and signal of the last query, from cached diagnostics."""
         queries = self.coordinator.last_poll_queries
         if not queries:
             return None
         diagnostics = queries[-1].get("transport_diagnostics") or {}
-        route = {"backend": diagnostics.get("backend")}
+        route: dict[str, Any] = {"backend": diagnostics.get("backend")}
         snapshot = (diagnostics.get("route_snapshots") or {}).get("before_connect")
         for candidate in (snapshot or {}).get("routes", []):
             if candidate.get("route_id") == diagnostics.get("selected_route"):
@@ -103,7 +112,7 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
         return route
 
     @property
-    def extra_state_attributes(self):
+    def extra_state_attributes(self) -> dict[str, Any]:
         coordinator = self.coordinator
         data = coordinator.data or {}
         readback = self._control_readback()
@@ -138,13 +147,13 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
             ),
         }
 
-    async def _run(self, action):
+    async def _run(self, action: str) -> None:
         if self.entry.options.get(VACUUM_CONTROLS_OPTION) is not True:
             raise validation("vacuum_controls_disabled")
         await async_control(self.coordinator, action)
 
-    async def async_start(self):
+    async def async_start(self) -> None:
         await self._run("start_cleaning")
 
-    async def async_stop(self, **kwargs):
+    async def async_stop(self, **kwargs: Any) -> None:
         await self._run("stop_cleaning")

@@ -6,21 +6,26 @@ metadata. Exclusive access remains an explicit operator prerequisite.
 """
 
 import asyncio
+from typing import Any
 
 import bleak_retry_connector
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
+from homeassistant.core import HomeAssistant
 
 from .probe import (
     EXPECTED_CHARACTERISTIC,
     EXPECTED_SERVICE,
     KEY_EXCHANGE_CHARACTERISTIC,
+    Target,
 )
 from .protocol import (
     MAX_TOTAL_BYTES,
+    Control,
     Decoder,
     ProtocolError,
+    Query,
     chunks,
     protocol_hint,
     query_frame,
@@ -161,8 +166,15 @@ def endpoint(client, query):
 
 
 async def query_once(
-    hass, target, report, query, *, pin_local=False, proxy_source=None, proxy_guard=None
-):
+    hass: HomeAssistant,
+    target: Target,
+    report: dict[str, Any],
+    query: Query | Control,
+    *,
+    pin_local: bool = False,
+    proxy_source: Any = None,
+    proxy_guard: Any = None,
+) -> None:
     """Connect, issue one fixed request, stop notifications, disconnect.
 
     Publication is the coordinator's responsibility after CRC and cleanup checks.

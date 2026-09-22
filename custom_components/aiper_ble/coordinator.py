@@ -4,9 +4,12 @@ import asyncio
 import json
 import logging
 import math
-from datetime import timedelta
+from collections.abc import Awaitable, Callable
+from datetime import datetime, timedelta
+from typing import TYPE_CHECKING, Any
 
-from homeassistant.core import callback
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import issue_registry as ir
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
@@ -17,8 +20,16 @@ from .datapoints import opinfo_values, timezone
 from .errors import validation
 from .local_bleak import query_once as local_bleak_query_once
 from .local_transport import query_once as local_query_once
+from .probe import Target
 from .protocol import Control, ProtocolError, Query, crc16, query_telemetry
 from .s1_states import info_state
+
+if TYPE_CHECKING:
+    from . import Runtime
+
+QueryOnce = Callable[
+    [HomeAssistant, Target, dict[str, Any], Query | Control], Awaitable[None]
+]
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_INTERVAL = 300
@@ -70,7 +81,7 @@ SUSPEND_CODES = {
 }
 
 
-def verified_values(response, query):
+def verified_values(response: object, query: Query | Control) -> dict[str, Any]:
     """Publish only matched, successful, CRC-verified allowlisted scalar values.
 
     The legacy CRC covers compact UTF-8 JSON data in received key order. It is
@@ -106,11 +117,20 @@ def verified_values(response, query):
     return opinfo_values(response["data"])
 
 
-class AiperCoordinator(DataUpdateCoordinator):
+def cancel_requested() -> bool:
+    """True when the running task has been asked to cancel during cleanup."""
+    task = asyncio.current_task()
+    return task is not None and task.cancelling() > 0
+
+
+class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     """Serialize polls with manual probes; no retries within a polling cycle."""
 
-    def __init__(self, hass, entry, runtime):
+    def __init__(
+        self, hass: HomeAssistant, entry: ConfigEntry, runtime: "Runtime"
+    ) -> None:
         self.runtime = runtime
+        self.entry_id = entry.entry_id
         self.enabled = (
             entry.options.get("polling_enabled") is True
             and entry.options.get("confirm_exclusive_access") is True
@@ -118,7 +138,7 @@ class AiperCoordinator(DataUpdateCoordinator):
         interval = entry.options.get("poll_interval", DEFAULT_INTERVAL)
         if type(interval) is not int or not MIN_INTERVAL <= interval <= MAX_INTERVAL:
             interval = DEFAULT_INTERVAL
-        self.interval = interval
+        self.interval: int = interval
         self.allow_missing = entry.options.get("allow_missing_advertisement") is True
         self.use_local_adapter = entry.options.get("use_local_adapter") is True
         self.transport = "local_bluez" if self.use_local_adapter else "ha_bluetooth"
@@ -126,17 +146,17 @@ class AiperCoordinator(DataUpdateCoordinator):
             LOCAL_POLL_QUERIES if self.use_local_adapter else HA_POLL_QUERIES
         )
         self.status = "waiting" if self.enabled else "disabled"
-        self.error_code = None
+        self.error_code: str | None = None
         self._suspended = False
         self.failures = 0
         self.next_attempt = 0.0
-        self.last_attempt_finished = None
-        self.last_poll_details = {}
-        self.last_poll_queries = []
-        self.last_control_result = {"status": "never_run"}
+        self.last_attempt_finished: float | None = None
+        self.last_poll_details: dict[str, Any] = {}
+        self.last_poll_queries: list[dict[str, Any]] = []
+        self.last_control_result: dict[str, Any] = {"status": "never_run"}
         # Temperature captured only in cycles where the robot reports working.
-        self.water_temperature = None
-        self.water_temperature_at = None
+        self.water_temperature: float | None = None
+        self.water_temperature_at: datetime | None = None
         super().__init__(
             hass,
             LOGGER,
@@ -149,14 +169,14 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.suspended = False
 
     @property
-    def suspended(self):
+    def suspended(self) -> bool:
         return self._suspended
 
     @suspended.setter
-    def suspended(self, value):
+    def suspended(self, value: bool) -> None:
         """Suspension is surfaced as a repair issue; reloading the entry fixes it."""
         self._suspended = bool(value)
-        issue_id = f"polling_suspended_{self.config_entry.entry_id}"
+        issue_id = f"polling_suspended_{self.entry_id}"
         if self._suspended:
             ir.async_create_issue(
                 self.hass,
@@ -166,25 +186,25 @@ class AiperCoordinator(DataUpdateCoordinator):
                 severity=ir.IssueSeverity.ERROR,
                 translation_key="polling_suspended",
                 translation_placeholders={"error_code": str(self.error_code)},
-                data={"entry_id": self.config_entry.entry_id},
+                data={"entry_id": self.entry_id},
             )
         else:
             ir.async_delete_issue(self.hass, DOMAIN, issue_id)
 
     @callback
-    def _async_refresh_finished(self):
+    def _async_refresh_finished(self) -> None:
         """Keep diagnostic status current even across consecutive failures."""
         self.async_update_listeners()
 
     @callback
-    def _publish_manual_error(self, error):
+    def _publish_manual_error(self, error: Exception) -> None:
         """Publish repeated failures without duplicating first-failure events."""
         was_successful = self.last_update_success
         self.async_set_update_error(error)
         if not was_successful:
             self.async_update_listeners()
 
-    async def async_poll_now(self):
+    async def async_poll_now(self) -> dict[str, Any]:
         """Run one existing guarded cycle immediately, never concurrently.
 
         An explicit operator request runs at once: it clears failure backoff and
@@ -216,8 +236,12 @@ class AiperCoordinator(DataUpdateCoordinator):
             }
 
     async def async_query_isolated(
-        self, query_type, *, local_bleak=False, proxy_entry_id=None
-    ):
+        self,
+        query_type: str,
+        *,
+        local_bleak: bool = False,
+        proxy_entry_id: str | None = None,
+    ) -> dict[str, Any]:
         """One production-transport query, without publishing partial telemetry.
 
         Recurring polling must be disabled so automatic cycles cannot contaminate
@@ -243,15 +267,17 @@ class AiperCoordinator(DataUpdateCoordinator):
                 raise validation("cooldown", seconds=math.ceil(remaining))
         # No await before reservation: all diagnostic actions use this mutex.
         self.runtime.task = asyncio.current_task()
-        report = {"query_type": query_type}
+        report: dict[str, Any] = {"query_type": query_type}
         started = dt_util.utcnow().isoformat()
-        values = {}
+        values: dict[str, Any] = {}
         query = Query("omit_empty_crc", "request", self.allow_missing, query_type)
         try:
             async with asyncio.timeout(
                 80 if proxy_entry_id is not None else SINGLE_QUERY_SECONDS
             ):
-                execute = local_query_once if self.use_local_adapter else query_once
+                execute: QueryOnce = (
+                    local_query_once if self.use_local_adapter else query_once
+                )
                 if local_bleak:
                     execute = local_bleak_query_once
                 if proxy_entry_id is not None:
@@ -265,7 +291,7 @@ class AiperCoordinator(DataUpdateCoordinator):
                 if report.get("status") == "cleanup_requires_review":
                     self.suspended = True
                     report["error_code"] = "cleanup_requires_review"
-                if asyncio.current_task().cancelling():
+                if cancel_requested():
                     raise asyncio.CancelledError
                 if (
                     report.get("status") != "query_complete"
@@ -353,7 +379,7 @@ class AiperCoordinator(DataUpdateCoordinator):
             self.runtime.task = None
         return dict(self.runtime.last_result)
 
-    async def _async_update_data(self):
+    async def _async_update_data(self) -> dict[str, Any]:
         if not self.enabled or self.runtime.closing:
             raise UpdateFailed("Polling disabled")
         if self.suspended:
@@ -371,13 +397,13 @@ class AiperCoordinator(DataUpdateCoordinator):
         self.runtime.task = asyncio.current_task()
         self.status = "polling"
         self.error_code = None
-        report = {}
-        reports = []
+        report: dict[str, Any] = {}
+        reports: list[dict[str, Any]] = []
         try:
-            values = {}
+            values: dict[str, Any] = {}
             # One connection per fixed request. Local mode pins the saved BlueZ
             # adapter; HA mode selects a route. Never retry or change transport.
-            previous_finished = None
+            previous_finished: float | None = None
             async with asyncio.timeout(POLL_SECONDS):
                 for index, query_type in enumerate(self.poll_queries, 1):
                     if self.runtime.closing:
@@ -393,14 +419,16 @@ class AiperCoordinator(DataUpdateCoordinator):
                             asyncio.get_running_loop().time() - previous_finished, 3
                         )
                     reports.append(report)
-                    execute = local_query_once if self.use_local_adapter else query_once
+                    execute: QueryOnce = (
+                        local_query_once if self.use_local_adapter else query_once
+                    )
                     await execute(self.hass, self.runtime.target, report, query)
                     previous_finished = asyncio.get_running_loop().time()
                     if report.get("status") == "cleanup_requires_review":
                         self.suspended = True
                     # The diagnostic probe records cancellation after cleanup.
                     # Do not swallow unload/deadline cancellation or start query 2.
-                    if asyncio.current_task().cancelling():
+                    if cancel_requested():
                         raise asyncio.CancelledError
                     if self.suspended:
                         raise UpdateFailed("cleanup_requires_review")
