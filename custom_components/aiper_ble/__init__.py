@@ -8,7 +8,6 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
-    EVENT_HOMEASSISTANT_STARTED,
     EVENT_HOMEASSISTANT_STOP,
     Platform,
 )
@@ -24,6 +23,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_call_later
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -431,7 +431,6 @@ def _defer_first_poll(hass: HomeAssistant, entry: ConfigEntry, coordinator):
     settle period before the first cycle. A reload while running polls at once.
     """
     timer = None
-    unsubscribe = None
 
     async def poll(_now):
         nonlocal timer
@@ -441,20 +440,19 @@ def _defer_first_poll(hass: HomeAssistant, entry: ConfigEntry, coordinator):
         await coordinator.async_refresh()
 
     @callback
-    def started(_event):
-        nonlocal timer, unsubscribe
-        unsubscribe = None
+    def started(_hass):
+        nonlocal timer
         timer = async_call_later(hass, STARTUP_SETTLE_SECONDS, poll)
 
     @callback
-    def cancel():
-        if unsubscribe is not None:
-            unsubscribe()
+    def cancel_timer():
         if timer is not None:
             timer()
 
-    unsubscribe = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, started)
-    entry.async_on_unload(cancel)
+    # HA's helper runs at once if startup already finished and owns the
+    # listener's lifetime, so unloading never removes a fired listener.
+    entry.async_on_unload(async_at_started(hass, started))
+    entry.async_on_unload(cancel_timer)
 
 
 async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry):

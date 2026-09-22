@@ -33,9 +33,10 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         """Offer a robot seen by HA's shared scanners; still no connection."""
         address = discovery_info.address.upper()
         await self.async_set_unique_id(address)
-        # A configured robot that now advertises a different name keeps its
-        # entry and picks up the new name (discovery-update-info).
-        self._abort_if_unique_id_configured(updates={"name": discovery_info.name})
+        # The address is the identity. Scanners report the name in several
+        # spellings, so rewriting it on every rediscovery would reload the entry
+        # repeatedly; a configured robot is simply left alone.
+        self._abort_if_unique_id_configured()
         self._discovered = Target(address, discovery_info.name)
         self.context["title_placeholders"] = {"name": discovery_info.name}
         return await self.async_step_bluetooth_confirm()
