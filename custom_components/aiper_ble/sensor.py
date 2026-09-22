@@ -110,7 +110,6 @@ class PollingStatusSensor(AiperEntity, SensorEntity):
     """Explain disabled, failed or suspended polling even with no telemetry."""
 
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_icon = "mdi:bluetooth"
 
     def __init__(self, entry):
         super().__init__(entry, "polling_status")
@@ -148,7 +147,6 @@ class ResultSensor(SensorEntity):
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_has_entity_name = True
     _attr_translation_key = "discovery_result"
-    _attr_icon = "mdi:bluetooth"
 
     def __init__(self, entry):
         self.entry = entry

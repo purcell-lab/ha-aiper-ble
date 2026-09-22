@@ -1,6 +1,16 @@
 {
   "domain": "aiper_ble",
   "name": "Aiper BLE",
+  "bluetooth": [
+    {
+      "local_name": "Aiper-Surfer S1-*",
+      "connectable": true
+    },
+    {
+      "local_name": "Aiper_Surfer S1_*",
+      "connectable": true
+    }
+  ],
   "codeowners": [
     "@purcell-lab"
   ],
@@ -13,5 +23,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/purcell-lab/ha-aiper-ble/issues",
   "requirements": [],
-  "version": "0.12.3"
+  "version": "0.13.0"
 }
