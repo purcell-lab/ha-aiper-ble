@@ -1,5 +1,7 @@
 """User-facing errors with translation keys; English stays as the fallback text."""
 
+from typing import Any
+
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 
 from .const import DOMAIN
@@ -67,7 +69,7 @@ MESSAGES = {
 }
 
 
-def _kwargs(key, placeholders):
+def _kwargs(key: str, placeholders: dict[str, object]) -> dict[str, Any]:
     return {
         "translation_domain": DOMAIN,
         "translation_key": key,
@@ -75,14 +77,14 @@ def _kwargs(key, placeholders):
     }
 
 
-def validation(key, **placeholders):
+def validation(key: str, **placeholders: object) -> ServiceValidationError:
     """A caller mistake: wrong input, missing confirmation, busy or gated state."""
     return ServiceValidationError(
         MESSAGES[key].format(**placeholders), **_kwargs(key, placeholders)
     )
 
 
-def failure(key, **placeholders):
+def failure(key: str, **placeholders: object) -> HomeAssistantError:
     """An operation that ran and did not succeed."""
     return HomeAssistantError(
         MESSAGES[key].format(**placeholders), **_kwargs(key, placeholders)

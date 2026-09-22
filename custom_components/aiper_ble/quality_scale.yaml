@@ -80,4 +80,8 @@ rules:
   inject-websession:
     status: exempt
     comment: No HTTP client is used.
-  strict-typing: todo
+  strict-typing:
+    status: todo
+    comment: >
+      Strict mypy runs in CI on the modules listed in mypy.ini; modules are
+      added as they are annotated (see #35).
