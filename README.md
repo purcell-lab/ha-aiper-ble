@@ -215,7 +215,7 @@ Aiper models use different command sets and are not accepted.
 | Function | Entity or action |
 | --- | --- |
 | Battery, temperature, raw status, mode, warning and solar codes, INFO state | `sensor.aiper_ble_*` |
-| Water temperature while working | `sensor.aiper_ble_water_temperature` |
+| Water temperature while working, unknown otherwise | `sensor.aiper_ble_water_temperature` |
 | Vacuum state and start/stop | `vacuum.aiper_surfer_s1` |
 | Buttons for poll now, start and stop | `button.aiper_ble_poll_now`, `button.aiper_ble_start_cleaning`, `button.aiper_ble_stop_cleaning` |
 | Signal strength of the last cycle's route | `sensor.aiper_ble_signal_strength` |
@@ -320,13 +320,14 @@ reloads the entry and runs one poll if polling is enabled.
 
 ## Water temperature
 
-`sensor.aiper_ble_water_temperature` holds the temperature read in the most
-recent polling cycle in which the robot reported working, when it is certainly
-in the water. The ordinary temperature sensor updates every cycle, including on
-the charger. This one keeps its value between cleaning sessions and across
-restarts, with `measured_at` in local time. The probe's physical location is
-still unverified, so treat it as "temperature seen by the robot while
-cleaning" rather than a calibrated pool thermometer.
+`sensor.aiper_ble_water_temperature` shows the temperature only from a polling
+cycle in which the robot reported working, when it is certainly in the water,
+and reads `unknown` after any other cycle, such as on the charger or in
+standby. The ordinary temperature sensor updates every cycle. The last working
+reading and its local time stay in the `last_working_reading` and
+`measured_at` attributes. The probe's physical location is still unverified,
+so treat it as "temperature seen by the robot while cleaning" rather than a
+calibrated pool thermometer.
 
 ## Vacuum entity
 
