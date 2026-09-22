@@ -1,0 +1,189 @@
+{
+  "title": "Aiper BLE",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select an Aiper Bluetooth target",
+        "description": "Uses HA shared Bluetooth discovery, including active ESPHome proxies. Setup will not connect or start a scanner. Polling uses HA-managed routes. Legacy diagnostic actions still require a local-adapter entry.",
+        "data": {"device": "Known Aiper device"}
+      }
+    },
+    "error": {"device_changed": "The selected device disappeared. Select a current device."},
+    "abort": {
+      "already_configured": "This Aiper device already has a diagnostic entry.",
+      "local_bluetooth_unavailable": "HA Bluetooth is unavailable. Check the Bluetooth integration and its adapters or active proxies.",
+      "no_local_aiper": "No eligible Aiper is cached by HA Bluetooth or the legacy local adapter. Bring an active proxy or adapter within range. This tool does not start a scan."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Guarded Surfer S1 polling",
+        "description": "Experimental polling using the selected transport: direct local BlueZ when Use saved local adapter is enabled, otherwise HA Bluetooth with active proxies. Local mode never falls back to a proxy. Local polling uses S1_INFO and INFO; HA polling also uses OpInfo and WARN. Enabling polling authorises recurring telemetry writes, subscriptions and disconnects, including after restart, but never cleaning commands. Start/stop are separate actions requiring per-call safety confirmation, or the vacuum entity when its option below is enabled. Keep other clients idle. INFO state labels are app-derived; temperature location, solar and fault meanings remain unverified. Failures back off; unsafe cleanup suspends polling.",
+        "data": {
+          "polling_enabled": "Enable recurring BLE status queries",
+          "poll_interval": "Successful poll interval in seconds (300 to 3600)",
+          "confirm_exclusive_access": "I authorise recurring queries and will keep other BLE clients idle",
+          "allow_missing_advertisement": "Allow the legacy S1 protocol when advertisement evidence is missing",
+          "use_local_adapter": "Use saved local adapter directly (no proxies or Bleak)",
+        "confirm_vacuum_controls": "Enable vacuum entity start/stop (I confirm the robot is in water, unplugged and nobody is in the pool)"
+        },
+        "data_description": {
+          "allow_missing_advertisement": "Persistent protocol exception for polling and explicitly requested control actions; not permission to move the robot. ECDH hints, key-exchange services, malformed advertisements and identity or endpoint changes still veto the operation.",
+          "use_local_adapter": "Applies to polling, isolated queries and explicit start/stop actions. Requires saved local adapter metadata. Uses direct BlueZ D-Bus with no automatic transport fallback. Disable recurring polling before isolated tests.",
+        "confirm_vacuum_controls": "Lets the vacuum entity's start and stop buttons send the same guarded MODE setters as the start_cleaning and stop_cleaning actions, without a per-call confirmation. Keep the app closed. Turn this off whenever the robot is out of the water, on its charger or people are in the pool. The entity's state is available either way."
+        }
+      }
+    },
+    "error": {
+      "exclusive_access_required": "Authorise recurring queries and exclusive device access before enabling polling.",
+      "local_adapter_required": "This entry has no saved local adapter. Keep local mode off; do not infer an adapter from a proxy."
+    }
+  },
+  "services": {
+    "start_cleaning": {
+      "name": "Start S1 cleaning (experimental)",
+      "description": "Fresh INFO and WARN checks, one AT+MODE=1 setter and one INFO readback over the selected BLE transport. No retries, toggle, cloud control or transport fallback. Requires explicit physical safety confirmation. APK-derived command; not yet live-validated.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Surfer S1 entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the Aiper app is closed and other BLE clients are idle."},
+        "confirm_safe_to_move": {"name": "Robot safe to operate", "description": "Confirm the robot is in water, unplugged, no people are in the pool, no firmware update is running, and this movement command is authorised."}
+      }
+    },
+    "stop_cleaning": {
+      "name": "Stop S1 cleaning (experimental)",
+      "description": "One AT+MODE=0 standby setter and one INFO readback over the selected BLE transport. No retries and no automatic poll. This is not an emergency stop, power-off, return-to-dock or pause/resume command. APK-derived command; not yet live-validated.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Surfer S1 entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the Aiper app is closed and other BLE clients are idle."},
+        "confirm_safe_to_move": {"name": "Robot safe to operate", "description": "Confirm the robot is in water, unplugged, no people are in the pool, no firmware update is running, and this standby command is authorised. If BLE fails, use the physical controls."}
+      }
+    },
+    "query_s1_info": {
+      "name": "Query S1_INFO once via selected transport",
+      "description": "Bisection only: disable recurring polling first. One fixed S1_INFO request over the selected production transport; verified temperature and solar scalars returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_opinfo": {
+      "name": "Query OpInfo once via selected transport",
+      "description": "Bisection only: disable recurring polling first. One fixed OpInfo request over the selected production transport; verified allowlisted scalars returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_info": {
+      "name": "Query INFO once via selected transport",
+      "description": "Bisection only: disable recurring polling first. One fixed INFO request over the selected production transport; verified battery/status/mode scalars returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_warn": {
+      "name": "Query WARN once via selected transport",
+      "description": "Bisection only: disable recurring polling first. One fixed WARN request over the selected production transport; verified raw warning integer returned, no entity refresh. Shares the configured cooldown across all isolated queries. No retries, fault clearing or controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise this single status request."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_opinfo_local_bleak": {
+      "name": "Diagnostic OpInfo via HA Bleak on saved local radio",
+      "description": "Same-radio comparison only. Disable recurring polling first. Explicitly bypasses the production transport choice for this one action, retaining HA slot accounting and lifecycle. Version-gated to HA's tested Bluetooth dependencies. Requires a fresh saved local route; no proxy, fallback, pairing or retry. Shares cooldown and cleanup suspension; does not update sensors.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded entry with saved local adapter metadata."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise one OpInfo query through HA Bleak on the saved local adapter."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."}
+      }
+    },
+    "query_opinfo_proxy_trace": {
+      "name": "Diagnostic OpInfo with native ESPHome trace",
+      "description": "Disable recurring polling first. One OpInfo query pinned to the selected, idle ESPHome proxy, with a separate bounded DEBUG log connection. Retains only allowlisted target events, not raw logs. No firmware changes, retries, controls or fallback. Shares cooldown and cleanup suspension; does not update sensors. Requires separately authorised live test conditions.",
+      "fields": {
+        "entry_id": {"name": "Aiper entry", "description": "The loaded Aiper integration."},
+        "proxy_entry_id": {"name": "ESPHome proxy entry", "description": "The loaded ESPHome integration for the exact proxy to test, not its Bluetooth entry."},
+        "confirm_app_closed": {"name": "Other clients idle", "description": "Confirm app closed, other robot BLE clients idle and robot stationary."},
+        "confirm_query_write": {"name": "Fixed query authorised", "description": "Authorise one OpInfo request on this selected proxy."},
+        "confirm_notifications": {"name": "Notifications authorised", "description": "Authorise notification subscription and disconnect cleanup."},
+        "confirm_proxy_logging": {"name": "Native logging authorised", "description": "Authorise one separate temporary native API connection for bounded DEBUG log capture."}
+      }
+    },
+    "poll_now": {
+      "name": "Poll Aiper telemetry now",
+      "description": "Run one guarded S1_INFO, OpInfo, INFO and WARN cycle through the selected transport and update sensors. Polling must already be enabled and authorised. Runs immediately, clearing any offline failure backoff and without waiting for the configured normal interval. Cannot bypass an active probe, suspension, protocol checks or disconnect cleanup. No robot controls.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed and other BLE clients are idle."}
+      }
+    },
+    "listen_once": {
+      "name": "Listen for Aiper notifications once",
+      "description": "Connect once and subscribe for at most 60 seconds, including startup notifications. No application reads or writes, queries, controls or retries. Subscription itself may write the CCCD. Stops notifications and disconnects.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."},
+        "confirm_notifications": {"name": "Bounded notification subscription authorised", "description": "Authorise one 60-second listen, including notification-enable descriptor writes and disconnect cleanup."},
+        "confirm_legacy_probe": {"name": "Guarded listen without advertisement evidence", "description": "Optional per-call exception for missing advertisement data. ECDH, malformed data, identity changes and unsafe endpoints still veto the test."}
+      }
+    },
+    "protocol_preview": {
+      "name": "Preview one status request offline",
+      "description": "Build one fixed OpInfo, S1_INFO, INFO or WARN frame without Bluetooth. INFO and WARN are app-derived from Aiper 3.6.1 build 82; live validation is still required.",
+      "fields": {
+        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (Wi-Fi), S1_INFO (temperature/solar), INFO (status/mode/battery) or WARN (raw warning code). One fixed request only; no arbitrary AT command."},
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo; include_empty_crc models an explicit empty object using seed 0x9966. S1_INFO, INFO and WARN always include the nonempty-data CRC regardless of this choice."},
+        "write_mode": {"name": "Write transport", "description": "command requires write-without-response; request requires write. Both transports appear in app 3.6.1. The selected flag must exist; no automatic fallback."}
+      }
+    },
+    "query_once": {
+      "name": "Query Aiper status once",
+      "description": "Experimental S1 legacy-XOR query. Enables notifications (CCCD write), sends one selected OpInfo, S1_INFO, INFO or WARN request, waits within a fixed deadline, stops notifications and disconnects. Not write-free. No controls, pairing, retries or automatic fallback.",
+      "fields": {
+        "query_type": {"name": "Fixed query", "description": "Choose OpInfo (Wi-Fi), S1_INFO (temperature/solar), INFO (status/mode/battery) or WARN (raw warning code). Only the selected request is sent. This local-only diagnostic action does not update the polling sensors."},
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "checksum_mode": {"name": "OpInfo empty-data checksum policy", "description": "Prefer omit_empty_crc for OpInfo. S1_INFO, INFO and WARN always include the mandatory nonempty-data CRC regardless of this choice. INFO and WARN hardware compatibility remains unverified."},
+        "write_mode": {"name": "Write transport", "description": "command requires write-without-response; request requires write. The app supports both, but this test never switches transport automatically."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, other BLE clients idle, and the robot stationary."},
+        "confirm_query_write": {"name": "One selected query write authorised", "description": "Authorise exactly the selected OpInfo, S1_INFO, INFO or WARN request, potentially split across multiple ATT writes. No retries or setters."},
+        "confirm_notifications": {"name": "Notification subscription authorised", "description": "Authorise StartNotify and StopNotify, including their CCCD writes. This is not a write-free test."},
+        "confirm_legacy_probe": {"name": "Guarded probe without advertisement evidence", "description": "Optional, false by default and never saved. Authorise this S1-only legacy experiment if company-zero advertisement data is absent. Requires a resolved, exact legacy GATT endpoint. ECDH hints, key-exchange characteristics and malformed data still veto the query."}
+      }
+    },
+    "read_once": {
+      "name": "Read one raw Aiper sample",
+      "description": "Connect once, validate the exact readable Aiper endpoint, read once within five seconds, then disconnect. No retries, writes, notifications, pairing or robot commands. Raw bytes are not decoded telemetry.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "Other BLE clients idle", "description": "Confirm the app is closed, all other BLE clients are idle and the robot is stationary."},
+        "confirm_read_only": {"name": "One raw read authorised", "description": "Authorise one read of the known Aiper characteristic. Keep the unparsed response private."}
+      }
+    },
+    "preflight": {
+      "name": "Check discovery prerequisites",
+      "description": "Validate existing local adapter/device metadata. Does not initiate a BLE connection.",
+      "fields": {"entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."}}
+    },
+    "discover": {
+      "name": "Discover GATT services once",
+      "description": "Connect once, list GATT metadata, then disconnect. No characteristic-value reads/writes, pairing or notification subscription. Keep the robot stationary and other BLE clients idle.",
+      "fields": {
+        "entry_id": {"name": "Integration entry", "description": "The loaded Aiper BLE entry."},
+        "confirm_app_closed": {"name": "App closed and test authorised", "description": "Confirm the Aiper app is closed, other BLE clients are idle, and this single connection is authorised."}
+      }
+    }
+  }
+}

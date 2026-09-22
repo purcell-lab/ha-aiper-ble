@@ -115,7 +115,7 @@ cannot prove either causality or motion. It is never published as operating stat
 
 ## Actions and guardrails
 
-Two actions are registered under `aiper_ble_diagnostics`:
+Two actions are registered under `aiper_ble`:
 `start_cleaning` and `stop_cleaning`. Both require:
 
 ```yaml

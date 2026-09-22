@@ -7,7 +7,7 @@ query need separate operator authorisation.
 
 ## Scope and isolation
 
-`aiper_ble_diagnostics.query_opinfo_proxy_trace` takes `entry_id` and
+`aiper_ble.query_opinfo_proxy_trace` takes `entry_id` and
 `proxy_entry_id` (the ESPHome config entry, not the Bluetooth entry).
 It requires all four confirmations: `confirm_app_closed`,
 `confirm_query_write`, `confirm_notifications`, and `confirm_proxy_logging`.

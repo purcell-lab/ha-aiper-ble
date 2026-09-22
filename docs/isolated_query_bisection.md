@@ -7,7 +7,7 @@ routing. Local mode never falls back to an active proxy. These actions are not
 aliases for the legacy `query_once` action: coordinator verification and cooldown
 still apply.
 
-| Action in `aiper_ble_diagnostics` | Fixed request | Useful returned values |
+| Action in `aiper_ble` | Fixed request | Useful returned values |
 | --- | --- | --- |
 | `query_s1_info` | S1_INFO | Temperature and raw solar status |
 | `query_opinfo` | OpInfo | Only present allowlisted fields, including raw Wi-Fi RSSI |
@@ -22,7 +22,7 @@ stationary. Disabling polling does not authorise a query: each action requires
 three explicit confirmations. Keep the same proxy and robot position throughout.
 
 ```yaml
-action: aiper_ble_diagnostics.query_opinfo
+action: aiper_ble.query_opinfo
 data:
   entry_id: YOUR_ENTRY_ID
   confirm_app_closed: true

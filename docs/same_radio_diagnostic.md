@@ -6,7 +6,7 @@ This action is experimental and is not a production transport or a proxy fix.
 ## Purpose
 
 Compare the existing direct BlueZ OpInfo action with
-`aiper_ble_diagnostics.query_opinfo_local_bleak` on the same saved local adapter.
+`aiper_ble.query_opinfo_local_bleak` on the same saved local adapter.
 The second action still uses HA's patched Bleak client, slot accounting,
 connection tracking, callbacks and disconnect lifecycle. It restricts route
 selection for this client only, rather than disabling proxies globally.
