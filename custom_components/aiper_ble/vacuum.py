@@ -6,11 +6,10 @@ from homeassistant.components.vacuum import (
     VacuumEntityFeature,
 )
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import dt as dt_util
 
 from .controls import async_control
-from .device import device_info
+from .entity import AiperEntity
 from .s1_states import info_state
 
 VACUUM_CONTROLS_OPTION = "confirm_vacuum_controls"
@@ -31,7 +30,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([AiperVacuum(entry)])
 
 
-class AiperVacuum(CoordinatorEntity, StateVacuumEntity):
+class AiperVacuum(AiperEntity, StateVacuumEntity):
     """State from CRC-verified INFO only; controls run the existing bounded path.
 
     Start and stop are the same exchanges as the start_cleaning and
@@ -40,16 +39,15 @@ class AiperVacuum(CoordinatorEntity, StateVacuumEntity):
     entry option that enables vacuum controls, which the owner sets once.
     """
 
-    _attr_name = "Aiper Surfer S1"
+    # The device's primary entity carries the device name itself.
+    _attr_name = None
     _attr_supported_features = (
         VacuumEntityFeature.START | VacuumEntityFeature.STOP | VacuumEntityFeature.STATE
     )
 
     def __init__(self, entry):
-        super().__init__(entry.runtime_data.coordinator)
-        self.entry = entry
-        self._attr_device_info = device_info(entry)
-        self._attr_unique_id = f"{entry.entry_id}_vacuum"
+        super().__init__(entry, "vacuum")
+        self._attr_translation_key = None
         self.entity_id = "vacuum.aiper_surfer_s1"
 
     def _control_readback(self):
@@ -66,11 +64,7 @@ class AiperVacuum(CoordinatorEntity, StateVacuumEntity):
     @property
     def available(self):
         coordinator = self.coordinator
-        if (
-            not coordinator.enabled
-            or coordinator.runtime.closing
-            or coordinator.suspended
-        ):
+        if not self.polling_active or coordinator.suspended:
             return False
         if self._control_readback() is not None:
             return True

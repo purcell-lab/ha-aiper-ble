@@ -40,6 +40,61 @@
       "local_adapter_required": "This entry has no saved local adapter. Keep local mode off; do not infer an adapter from a proxy."
     }
   },
+  "entity": {
+    "sensor": {
+      "temperature": {
+        "name": "Temperature"
+      },
+      "battery": {
+        "name": "Battery"
+      },
+      "info_status_raw": {
+        "name": "Operating status raw"
+      },
+      "info_mode_raw": {
+        "name": "Operating mode raw"
+      },
+      "warning_code_raw": {
+        "name": "Warning code raw"
+      },
+      "temperature_raw": {
+        "name": "S1 temperature raw"
+      },
+      "solar_status_raw": {
+        "name": "Solar status raw"
+      },
+      "s1_timezone": {
+        "name": "S1 time zone"
+      },
+      "wifi_rssi_raw": {
+        "name": "Wi-Fi RSSI raw"
+      },
+      "wifi_name": {
+        "name": "Wi-Fi network"
+      },
+      "last_success": {
+        "name": "Last successful poll"
+      },
+      "polling_status": {
+        "name": "Polling status"
+      },
+      "discovery_result": {
+        "name": "Discovery result"
+      },
+      "operating_state": {
+        "name": "Operating state",
+        "state": {
+          "standby": "Standby",
+          "working": "Working",
+          "charging": "Charging",
+          "fully_charged": "Fully charged",
+          "updating": "Updating",
+          "sunward": "Sunward (intermittent mode)",
+          "unknown_code": "Unknown code"
+        }
+      }
+    }
+  },
   "services": {
     "start_cleaning": {
       "name": "Start S1 cleaning (experimental)",

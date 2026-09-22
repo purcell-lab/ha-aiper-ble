@@ -1,0 +1,83 @@
+# Home Assistant Integration Quality Scale tracking for this custom integration.
+# Audit of 22 September 2026 (AEST). Rules that exist only for core
+# integrations are exempt with the reason; every todo is tracked in the
+# tier issues on GitHub (#32 Bronze, #33 Silver, #34 Gold, #35 Platinum).
+rules:
+  # Bronze
+  action-setup: done
+  appropriate-polling: done
+  brands:
+    status: exempt
+    comment: Custom integration; the brands repository is for core integrations.
+  common-modules: done
+  config-flow: done
+  config-flow-test-coverage: done
+  dependency-transparency: done
+  docs-actions: done
+  docs-high-level-description: done
+  docs-installation-instructions: done
+  docs-removal-instructions: done
+  entity-event-setup: done
+  entity-unique-id: done
+  has-entity-name: done
+  runtime-data: done
+  test-before-configure:
+    status: exempt
+    comment: >
+      Setup deliberately never connects to the robot. It is a BLE peripheral
+      with a single connection slot that the vendor app may be holding, and
+      an unexpected connection could interrupt a cleaning session. Selection
+      uses cached advertisements only.
+  test-before-setup:
+    status: exempt
+    comment: >
+      An offline robot must not fail the entry: the diagnostic actions have
+      to stay available while the robot is out of range or charging. The
+      first poll runs at setup and its outcome is shown by the polling status
+      sensor instead.
+  unique-config-entry: done
+  # Silver
+  action-exceptions: done
+  config-entry-unloading: done
+  docs-configuration-parameters: todo
+  docs-installation-parameters: done
+  entity-unavailable: done
+  integration-owner: done
+  log-when-unavailable: done
+  parallel-updates: todo
+  reauthentication-flow:
+    status: exempt
+    comment: The robot has no credentials or authentication.
+  test-coverage: done
+  # Gold
+  devices: done
+  diagnostics: done
+  discovery: todo
+  discovery-update-info: todo
+  docs-data-update: todo
+  docs-examples: todo
+  docs-known-limitations: todo
+  docs-supported-devices: todo
+  docs-supported-functions: todo
+  docs-troubleshooting: done
+  docs-use-cases: todo
+  dynamic-devices:
+    status: exempt
+    comment: Exactly one robot per config entry, chosen at setup.
+  entity-category: done
+  entity-device-class: done
+  entity-disabled-by-default: done
+  entity-translations: done
+  exception-translations: todo
+  icon-translations: todo
+  reconfiguration-flow: todo
+  repair-issues: todo
+  stale-devices:
+    status: exempt
+    comment: One device per entry; it is removed with the entry.
+  # Platinum
+  async-dependency: done
+  inject-websession:
+    status: exempt
+    comment: No HTTP client is used.
+  strict-typing: todo

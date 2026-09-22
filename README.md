@@ -168,6 +168,14 @@ changed to `aiper_ble.*`.
 See [HACS integration repository requirements](https://www.hacs.xyz/docs/publish/integration/).
 HACS validation and a default-directory submission have not been completed.
 
+### Removing the integration
+
+Remove the **Aiper BLE** entry under Settings > Devices & services. The
+device and all of its entities are removed with it; recorder history for the
+entity IDs stays until Home Assistant's normal purge. Nothing is written to the
+robot on removal. To remove the code as well, uninstall the repository in HACS
+(or delete `custom_components/aiper_ble/`) and restart Home Assistant.
+
 ### Existing installations from ha-config
 
 Do not remove and re-add the integration. Keep the existing domain, config entry,
