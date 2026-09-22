@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 import pytest
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.util import dt as dt_util
 
 from custom_components.aiper_ble_diagnostics.protocol import Control
 from custom_components.aiper_ble_diagnostics.vacuum import ACTIVITIES
@@ -64,7 +65,10 @@ async def test_attributes_from_verified_cycle_and_five_field_info(hass, transpor
     assert attrs["consecutive_failures"] == 0
     assert attrs["last_control"] is None
     coordinator = entry.runtime_data.coordinator
-    assert attrs["last_successful_poll"] == coordinator.data["last_success"].isoformat()
+    assert (
+        attrs["last_successful_poll"]
+        == dt_util.as_local(coordinator.data["last_success"]).isoformat()
+    )
     assert hass.states.get("sensor.aiper_ble_operating_status_raw").state == "1"
     # Three-field replies leave the counter unset rather than inventing a value.
     await coordinator.async_poll_now()
