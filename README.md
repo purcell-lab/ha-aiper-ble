@@ -114,6 +114,8 @@ This is not write-free passive reception. It never sends robot control commands.
 
 One cycle contains four bounded connections, one for each fixed request.
 Readings publish only after matching, CRC-verified replies and confirmed cleanup.
+After a Home Assistant restart the first cycle waits for startup to finish
+plus a short settle period so the Bluetooth proxies can reconnect first.
 Failures back off; unsafe cleanup or unsupported security/protocol evidence
 suspends polling. On the HA-managed route a confirmed disconnect releases the
 client's own notification subscription, so a failed unsubscribe on a link that

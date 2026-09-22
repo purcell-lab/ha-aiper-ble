@@ -304,6 +304,16 @@ async def test_last_successful_poll_hidden_once_polling_is_disabled(hass, local_
     )
 
 
+async def test_local_adapter_polls_immediately_during_startup(hass, local_radio):
+    """The direct-local adapter is present at boot; no proxy settle wait."""
+    from homeassistant.core import CoreState
+
+    hass.set_state(CoreState.starting)
+    entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
+    assert len(local_radio[0]) == 2
+    assert entry.runtime_data.coordinator.status == "ok"
+
+
 async def test_minimal_local_poll_now_runs_immediately(hass, local_radio):
     entry = await setup(hass, {**OPTIONS, "use_local_adapter": True})
     coordinator = entry.runtime_data.coordinator

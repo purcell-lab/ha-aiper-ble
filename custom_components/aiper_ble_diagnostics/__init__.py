@@ -7,12 +7,23 @@ from typing import Any
 
 import voluptuous as vol
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import EVENT_HOMEASSISTANT_STOP, Platform
-from homeassistant.core import HomeAssistant, ServiceCall, SupportsResponse
+from homeassistant.const import (
+    EVENT_HOMEASSISTANT_STARTED,
+    EVENT_HOMEASSISTANT_STOP,
+    Platform,
+)
+from homeassistant.core import (
+    CoreState,
+    HomeAssistant,
+    ServiceCall,
+    SupportsResponse,
+    callback,
+)
 from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.dispatcher import async_dispatcher_send
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import UpdateFailed
 from homeassistant.util import dt as dt_util
 
@@ -30,6 +41,7 @@ from .probe import probe as run_probe
 from .protocol import Listen, Query, preview
 
 PLATFORMS = [Platform.SENSOR]
+STARTUP_SETTLE_SECONDS = 45
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 
@@ -415,8 +427,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         hass, entry, entry.runtime_data
     )
     if coordinator.enabled:
-        # An offline robot must not prevent loading the diagnostic actions.
-        await coordinator.async_refresh()
+        if coordinator.use_local_adapter or hass.state is CoreState.running:
+            # An offline robot must not prevent loading the diagnostic actions.
+            await coordinator.async_refresh()
+        else:
+            _defer_first_poll(hass, entry, coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(async_options_updated))
 
@@ -425,6 +440,43 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     entry.async_on_unload(hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, stop))
     return True
+
+
+@callback
+def _defer_first_poll(hass: HomeAssistant, entry: ConfigEntry, coordinator):
+    """Let remote Bluetooth proxies reconnect before the first HA-route poll.
+
+    Right after Home Assistant starts, only the local USB adapter is known;
+    ESPHome proxies reconnect over the following seconds. Polling at once, as
+    observed on 22 September 2026 (AEST), ranks the stale local route first
+    and spends a 20-second connect timeout. Wait for startup to finish and a
+    settle period before the first cycle. A reload while running polls at once.
+    """
+    timer = None
+    unsubscribe = None
+
+    async def poll(_now):
+        nonlocal timer
+        timer = None
+        if entry.runtime_data.closing or coordinator.suspended:
+            return
+        await coordinator.async_refresh()
+
+    @callback
+    def started(_event):
+        nonlocal timer, unsubscribe
+        unsubscribe = None
+        timer = async_call_later(hass, STARTUP_SETTLE_SECONDS, poll)
+
+    @callback
+    def cancel():
+        if unsubscribe is not None:
+            unsubscribe()
+        if timer is not None:
+            timer()
+
+    unsubscribe = hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STARTED, started)
+    entry.async_on_unload(cancel)
 
 
 async def async_options_updated(hass: HomeAssistant, entry: ConfigEntry):

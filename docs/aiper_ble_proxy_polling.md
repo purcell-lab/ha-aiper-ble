@@ -121,6 +121,13 @@ not the older diagnostic experiments.
   a proxy route whose link dropped right after connecting. The existing 300-second minimum interval, backoff,
   mutual exclusion and CRC-checked atomic sensor publication remain.
 
+After a Home Assistant start the first HA-route cycle waits for the
+`homeassistant_started` event plus a 45-second settle period, because the
+ESPHome proxies reconnect over the seconds after startup and an immediate poll
+sees only the local USB adapter's stale advertisement. The polling status
+sensor reads `waiting` until then. A reload while Home Assistant is already
+running, and the direct-local adapter path, still poll immediately.
+
 Remote Bleak backends do **not** expose all local BlueZ metadata. The old
 pre-connect pairing/trust/notification ownership assertions cannot be claimed
 for proxies. Negative local properties are honoured when available; otherwise
