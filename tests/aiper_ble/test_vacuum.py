@@ -186,3 +186,25 @@ async def test_entity_registered_on_shared_device(hass, transport):
     assert device.name == "Aiper Surfer S1 (BLE)"
     battery = registry.async_get("sensor.aiper_ble_battery")
     assert battery.device_id == item.device_id
+
+
+async def test_entities_use_device_name_and_translated_names(hass, transport):
+    """Bronze has-entity-name: names come from translations under the device."""
+    await setup(hass)
+    assert hass.states.get(ENTITY).name == "Aiper Surfer S1 (BLE)"
+    assert (
+        hass.states.get("sensor.aiper_ble_battery").name
+        == "Aiper Surfer S1 (BLE) Battery"
+    )
+    assert (
+        hass.states.get("sensor.aiper_ble_polling_status").name
+        == "Aiper Surfer S1 (BLE) Polling status"
+    )
+    assert (
+        hass.states.get("sensor.aiper_ble_discovery_result").name
+        == "Aiper Surfer S1 (BLE) Discovery result"
+    )
+    assert (
+        hass.states.get("sensor.aiper_ble_operating_state").name
+        == "Aiper Surfer S1 (BLE) Operating state"
+    )

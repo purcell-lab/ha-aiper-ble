@@ -9,13 +9,16 @@ from homeassistant.const import PERCENTAGE, UnitOfTemperature
 from homeassistant.core import callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity import EntityCategory
-from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from homeassistant.util import slugify
 
 from .const import DOMAIN, SIGNAL_RESULT
 from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
 from .device import device_info
+from .entity import AiperEntity
 from .s1_states import INFO_STATES, info_state
+
+# Coordinator-driven entities never call the robot themselves.
+PARALLEL_UPDATES = 0
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -29,18 +32,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
     )
 
 
-class TelemetrySensor(CoordinatorEntity, SensorEntity):
+class TelemetrySensor(AiperEntity, SensorEntity):
     """Never publish unverified data or claim a temperature sensor location."""
 
     def __init__(self, entry, key):
-        super().__init__(entry.runtime_data.coordinator)
-        self._attr_device_info = device_info(entry)
-        self.key = key
-        self._attr_unique_id = f"{entry.entry_id}_{key}"
-        self._attr_name = SENSOR_NAMES[key]
+        super().__init__(entry, key)
         self._attr_entity_registry_enabled_default = key in DEFAULT_ENABLED
-        # Preserve legacy defaults; HA's registry still honours user-renamed IDs.
-        self.entity_id = f"sensor.{slugify(self._attr_name)}"
+        # Fixed IDs from the historical names; HA still honours user-renamed IDs.
+        self.entity_id = f"sensor.{slugify(SENSOR_NAMES[key])}"
         if key == "temperature":
             self._attr_device_class = SensorDeviceClass.TEMPERATURE
             self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -57,8 +56,7 @@ class TelemetrySensor(CoordinatorEntity, SensorEntity):
     @property
     def available(self):
         return (
-            self.coordinator.enabled
-            and not self.coordinator.runtime.closing
+            self.polling_active
             # Measured values disappear as soon as a cycle fails, so no stale
             # reading is ever presented as current. The last-successful-poll
             # timestamp is staleness evidence rather than a measurement, and is
@@ -74,24 +72,20 @@ class TelemetrySensor(CoordinatorEntity, SensorEntity):
         return (self.coordinator.data or {}).get(self.key)
 
 
-class OperatingStateSensor(CoordinatorEntity, SensorEntity):
+class OperatingStateSensor(AiperEntity, SensorEntity):
     """INFO-derived enum, not a claim to reproduce the app's cloud overlays."""
 
-    _attr_name = "Aiper BLE operating state"
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = list(INFO_STATES)
 
     def __init__(self, entry):
-        super().__init__(entry.runtime_data.coordinator)
-        self._attr_device_info = device_info(entry)
-        self._attr_unique_id = f"{entry.entry_id}_operating_state"
+        super().__init__(entry, "operating_state")
         self.entity_id = "sensor.aiper_ble_operating_state"
 
     @property
     def available(self):
         return (
-            self.coordinator.enabled
-            and not self.coordinator.runtime.closing
+            self.polling_active
             and super().available
             and self.coordinator.data is not None
             and self.coordinator.data.get("info_status_raw") is not None
@@ -109,17 +103,14 @@ class OperatingStateSensor(CoordinatorEntity, SensorEntity):
         }
 
 
-class PollingStatusSensor(CoordinatorEntity, SensorEntity):
+class PollingStatusSensor(AiperEntity, SensorEntity):
     """Explain disabled, failed or suspended polling even with no telemetry."""
 
-    _attr_name = "Aiper BLE polling status"
     _attr_entity_category = EntityCategory.DIAGNOSTIC
     _attr_icon = "mdi:bluetooth"
 
     def __init__(self, entry):
-        super().__init__(entry.runtime_data.coordinator)
-        self._attr_device_info = device_info(entry)
-        self._attr_unique_id = f"{entry.entry_id}_polling_status"
+        super().__init__(entry, "polling_status")
         self.entity_id = "sensor.aiper_ble_polling_status"
 
     @property
@@ -152,7 +143,8 @@ class ResultSensor(SensorEntity):
 
     _attr_should_poll = False
     _attr_entity_category = EntityCategory.DIAGNOSTIC
-    _attr_name = "Aiper BLE discovery result"
+    _attr_has_entity_name = True
+    _attr_translation_key = "discovery_result"
     _attr_icon = "mdi:bluetooth"
 
     def __init__(self, entry):
