@@ -217,6 +217,8 @@ Aiper models use different command sets and are not accepted.
 | Battery, temperature, raw status, mode, warning and solar codes, INFO state | `sensor.aiper_ble_*` |
 | Water temperature while working | `sensor.aiper_ble_water_temperature` |
 | Vacuum state and start/stop | `vacuum.aiper_surfer_s1` |
+| Buttons for poll now, start and stop | `button.aiper_ble_poll_now`, `button.aiper_ble_start_cleaning`, `button.aiper_ble_stop_cleaning` |
+| Signal strength of the last cycle's route | `sensor.aiper_ble_signal_strength` |
 | Start and stop with per-call confirmation | `aiper_ble.start_cleaning`, `aiper_ble.stop_cleaning` |
 | Immediate poll | `aiper_ble.poll_now` |
 | Isolated single-query diagnostics and transport experiments | `aiper_ble.query_*`, `preflight`, `discover`, `read_once`, `listen_once`, `protocol_preview`, `query_once` |
@@ -346,8 +348,29 @@ the standing equivalent of the per-call confirmations the `start_cleaning` and
 unplugged, nobody is in the pool and the app is closed, and turn it off
 otherwise. With it on, a button press runs exactly the same guarded sequence as
 the action (preflight, one setter, one INFO readback, no retry) and the entity
-shows the readback state until the next polling cycle. An unconfirmed command
+shows the readback state until a full polling cycle confirms it. That cycle
+runs about 20 seconds after the control finishes, instead of a whole polling
+interval later; the normal interval resumes from there. An unconfirmed command
 raises an error and leaves the entity unavailable until the next poll.
+
+## Buttons
+
+`button.aiper_ble_poll_now` runs one full polling cycle at once, exactly like
+the `poll_now` action, and reports the cycle's error if it fails.
+`button.aiper_ble_start_cleaning` and `button.aiper_ble_stop_cleaning` run the
+same guarded control sequence as the vacuum entity and are refused until
+**Enable vacuum entity start/stop** is turned on in the options. The buttons
+are unavailable while polling is disabled or suspended.
+
+## Signal strength
+
+`sensor.aiper_ble_signal_strength` is the RSSI, in dBm, of the robot's
+advertisement as seen by the proxy or adapter the last cycle connected
+through, read just before that connection. It is the observer's reading, not
+the robot's, so it changes with the route Home Assistant selects. It is
+unavailable after a cycle that selected no route, such as when the robot is
+off. The `backend` and `scanner_type` attributes say which kind of route it
+was.
 
 ## Poll now
 

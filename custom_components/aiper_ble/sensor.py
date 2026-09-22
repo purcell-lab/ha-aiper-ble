@@ -10,7 +10,12 @@ from homeassistant.components.sensor import (
     SensorStateClass,
 )
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.const import PERCENTAGE, EntityCategory, UnitOfTemperature
+from homeassistant.const import (
+    PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
+    EntityCategory,
+    UnitOfTemperature,
+)
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -40,6 +45,7 @@ async def async_setup_entry(
             PollingStatusSensor(entry),
             OperatingStateSensor(entry),
             WaterTemperatureSensor(entry),
+            SignalStrengthSensor(entry),
         ]
     )
 
@@ -252,4 +258,39 @@ class WaterTemperatureSensor(AiperEntity, RestoreSensor):
             ),
             "source": "S1_INFO_temperature_in_working_cycle",
             "temperature_sensor_location": "unverified",
+        }
+
+
+class SignalStrengthSensor(AiperEntity, SensorEntity):
+    """Signal of the route the last cycle connected through, as HA observed it.
+
+    Not the robot's own measurement: it is the proxy's or local adapter's
+    reading of the robot's advertisement just before the connection. It goes
+    unavailable when a cycle selected no route at all.
+    """
+
+    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, entry: ConfigEntry) -> None:
+        super().__init__(entry, "signal_strength")
+        self.entity_id = "sensor.aiper_ble_signal_strength"
+
+    @property
+    def available(self) -> bool:
+        return self.polling_active and self.coordinator.signal_strength is not None
+
+    @property
+    def native_value(self) -> int | float | None:
+        return self.coordinator.signal_strength
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        route = self.coordinator.last_route or {}
+        return {
+            "backend": route.get("backend"),
+            "scanner_type": route.get("scanner_type"),
+            "source": "observer_reading_of_robot_advertisement_before_connect",
         }

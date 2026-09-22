@@ -12,12 +12,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
-from .controls import async_control
+from .controls import VACUUM_CONTROLS_OPTION, async_entity_control
 from .entity import AiperEntity
-from .errors import validation
 from .s1_states import info_state
 
-VACUUM_CONTROLS_OPTION = "confirm_vacuum_controls"
 # Start and stop send BLE commands through the shared poll/control mutex; one
 # at a time is the honest concurrency.
 PARALLEL_UPDATES = 1
@@ -97,20 +95,6 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
             return VacuumActivity.ERROR
         return ACTIVITIES.get(info_state(data))
 
-    def _last_route(self) -> dict[str, Any] | None:
-        """Backend and signal of the last query, from cached diagnostics."""
-        queries = self.coordinator.last_poll_queries
-        if not queries:
-            return None
-        diagnostics = queries[-1].get("transport_diagnostics") or {}
-        route: dict[str, Any] = {"backend": diagnostics.get("backend")}
-        snapshot = (diagnostics.get("route_snapshots") or {}).get("before_connect")
-        for candidate in (snapshot or {}).get("routes", []):
-            if candidate.get("route_id") == diagnostics.get("selected_route"):
-                route["scanner_type"] = candidate.get("scanner_type")
-                route["rssi_dbm"] = candidate.get("rssi_dbm")
-        return route
-
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         coordinator = self.coordinator
@@ -136,7 +120,7 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
             ),
             "polling_status": coordinator.status,
             "consecutive_failures": coordinator.failures,
-            "last_route": self._last_route(),
+            "last_route": coordinator.last_route,
             "last_control": (
                 {
                     key: control.get(key)
@@ -148,9 +132,7 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
         }
 
     async def _run(self, action: str) -> None:
-        if self.entry.options.get(VACUUM_CONTROLS_OPTION) is not True:
-            raise validation("vacuum_controls_disabled")
-        await async_control(self.coordinator, action)
+        await async_entity_control(self.entry, self.coordinator, action)
 
     async def async_start(self) -> None:
         await self._run("start_cleaning")

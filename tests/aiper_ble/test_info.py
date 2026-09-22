@@ -167,6 +167,10 @@ async def test_only_useful_defaults_and_private_field_presence(hass, transport):
         "operating_state",
         "vacuum",
         "water_temperature",
+        "signal_strength",
+        "poll_now",
+        "start_cleaning",
+        "stop_cleaning",
     }
     battery = hass.states.get("sensor.aiper_ble_battery")
     assert battery.attributes["device_class"] == "battery"

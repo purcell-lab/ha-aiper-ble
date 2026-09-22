@@ -112,6 +112,20 @@
           "sunward": "Sunward (intermittent mode)",
           "unknown_code": "Unknown code"
         }
+      },
+      "signal_strength": {
+        "name": "Signal strength"
+      }
+    },
+    "button": {
+      "poll_now": {
+        "name": "Poll now"
+      },
+      "start_cleaning": {
+        "name": "Start cleaning"
+      },
+      "stop_cleaning": {
+        "name": "Stop cleaning"
       }
     }
   },
