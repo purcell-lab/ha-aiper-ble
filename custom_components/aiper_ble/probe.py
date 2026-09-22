@@ -53,6 +53,16 @@ class Target:
         if not self.name.startswith(("Aiper-", "Aiper_")):
             raise ValueError("Only explicitly named Aiper devices are eligible.")
 
+    def matches_name(self, observed: object) -> bool:
+        """Accept both advertised spellings of the same robot name.
+
+        The robot is seen as "Aiper-Surfer S1-<serial>" and "Aiper_Surfer
+        S1_<serial>"; the address is the identity, the serial must still match.
+        """
+        return isinstance(observed, str) and observed.replace("_", "-") == (
+            self.name.replace("_", "-")
+        )
+
     @property
     def device_path(self) -> str:
         if self.adapter_path is None:
@@ -160,9 +170,8 @@ def validate(objects: Mapping[str, Any], target: Target) -> dict[str, Any]:
     if not adapter.get("Powered"):
         raise ProbeError("Adapter is off; this probe will not enable it.")
     device: dict[str, Any] = objects.get(target.device_path, {}).get(DEVICE_IF, {})
-    if (
-        device.get("Address", "").upper() != target.address
-        or device.get("Name") != target.name
+    if device.get("Address", "").upper() != target.address or not target.matches_name(
+        device.get("Name")
     ):
         raise ProbeError(
             "Expected robot absent or identity changed; no scan or fallback."
@@ -222,7 +231,7 @@ def endpoint_properties(
         adapter.get("Address", "").upper() != target.adapter_address
         or not adapter.get("Powered")
         or device.get("Address", "").upper() != target.address
-        or device.get("Name") != target.name
+        or not target.matches_name(device.get("Name"))
         or device.get("Adapter") != target.adapter_path
         or device.get("Connected") is not True
         or device.get("ServicesResolved") is not True

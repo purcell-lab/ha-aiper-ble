@@ -146,6 +146,22 @@ async def execute(hass, radio):
     return report
 
 
+async def test_other_name_spelling_is_the_same_robot(hass, radio):
+    """The robot advertises both spellings; the address is the identity."""
+    radio.device.name = "Aiper_Surfer S1_TEST"
+    radio.routes[0].advertisement.local_name = "Aiper_Surfer S1_TEST"
+    report = await execute(hass, radio)
+    assert report["status"] == "query_complete"
+
+
+async def test_other_serial_is_an_identity_change(hass, radio):
+    radio.routes[0].advertisement.local_name = "Aiper-Surfer S1-OTHER"
+    report = await execute(hass, radio)
+    assert report["status"] == "failed"
+    assert report["error_code"] == "identity_changed"
+    assert not radio.clients
+
+
 async def test_proxy_only_fixed_query_and_cleanup(hass, radio):
     report = await execute(hass, radio)
     client = radio.clients[0]
