@@ -58,6 +58,9 @@ SUNWARD uses the app's intermittent-mode text resource. This is not evidence
 that the robot is navigating toward sunlight. Mode 8 suppresses WORKING, but
 its physical meaning is not established; other mode names are not guessed.
 Status 0 is consistent with the app's standby branch and start/stop UI.
+Live polling on 22 September 2026 (AEST) read status 0 with mode 0 while idle
+in the pool and while paused, status 1 with mode 1 while cleaning, status 2
+with mode 0 on the wall charger below 100%, and status 3 with mode 0 at 100%.
 
 ### Home Assistant representation
 
@@ -120,8 +123,9 @@ Polling authorisation is not control authorisation.
   are not implemented. This is stricter than the app's selective warning gate.
 - **Stop:** one MODE=0 setter, then one INFO readback. It does not require a
   successful warning read or fresh cached status before attempting standby.
-  It bypasses the normal five-minute polling cooldown, not an active BLE lock
-  or suspended cleanup/protocol guard.
+  It bypasses the isolated diagnostic actions' shared cooldown (`poll_now` has
+  none since version 0.9.15), not an active BLE lock or suspended
+  cleanup/protocol guard.
 - **Transport:** uses the configured HA Bluetooth route (including active
   proxies) or explicitly selected saved local BlueZ adapter. No transport
   setting changes, fallback strategy or retry is introduced.
@@ -132,7 +136,10 @@ Polling authorisation is not control authorisation.
 - **Outcome:** success requires a CRC-verified post-command INFO response.
   Start requires status 1 with derived WORKING; stop requires status 0 with
   derived STANDBY. One readback only; no state-convergence loop. Firmware latency
-  can therefore produce an unconfirmed result even after an effective command.
+  can therefore produce an unconfirmed result even after an effective command:
+  on 22 September 2026 (AEST) a poll at 09:13:48 still read status 0 after the
+  robot had resumed cleaning, and the next cycle read 1. Treat an unconfirmed
+  start as unresolved and check the next poll before repeating anything.
 - **Uncertainty:** a write failure, malformed acknowledgement or failed readback
   never triggers retransmission. Diagnostics distinguish possible actuation,
   acknowledgement and verified readback. An unsuccessful action raises an HA

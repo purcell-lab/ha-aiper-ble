@@ -108,7 +108,7 @@ so checksum validity alone cannot establish request-response causality.
 | Request | Accepted AT text or data | Published interpretation |
 | --- | --- | --- |
 | S1_INFO | `+S1_INFO:<temperature_raw>,<solar_code>\r\n` | Temperature divided by 10 in Celsius; solar code stays raw |
-| INFO | `+INFO:<status>,<mode>,<battery>\r\n`, or the observed five-integer form | First three fields only; last two fields remain unknown |
+| INFO | `+INFO:<status>,<mode>,<battery>\r\n`, or the observed five-integer form | First three fields only; field 4 observed as 0 and field 5 as a minute counter (see the [BLE specification](AIPER_POOL_ROBOT_BLE_SPEC.md)), neither published |
 | WARN | `+WARN:<signed-int64>\r\n` | Raw warning code; no inferred fault labels |
 | OpInfo | Direct fields such as `wifi_rssi` and optional `wifi_name` | Observed RSSI `-127` remains raw; its sentinel meaning is unverified |
 | MODE setter | Bare `+OK\r\n`, case-insensitive, within a valid Machine response | Acknowledgement only; a separate INFO readback is required |
@@ -147,6 +147,8 @@ The integration exposes only the INFO-derived subset:
 The `sunward` label comes from the enum, but the app associates it with
 intermittent-mode text; navigation toward sunlight is not established.
 Mode 8 suppresses the working branch but has no proven physical interpretation.
+Mode 1 was read on every working-state poll on 22 September 2026 (AEST), with
+status 1, and mode 0 with status 0, 2 and 3; it is the only mode value observed.
 The integration does not manufacture the app's connectivity, warning or
 external-OTA overlays. Ordinary disconnection between bounded polls is not
 reported as an app DISCONNECT state. The full app predicate order and exact
@@ -189,6 +191,10 @@ The complete control has a 180-second deadline plus bounded cancellation cleanup
 
 Start is verified only by INFO status 1 with derived working; stop requires
 status 0 with derived standby. There is one readback, not a convergence loop.
+Live polling on 22 September 2026 (AEST) still read status 0 at 09:13:48 while
+the robot had already resumed cleaning, and 1 at the next cycle, so a readback
+seconds after MODE=1 can return `acknowledged_state_unconfirmed` for an
+effective command; a later poll settles it.
 `state_verified` describes the robot's report, not visual observation of motion.
 BLE stop is not an emergency stop; use physical controls if communications fail.
 

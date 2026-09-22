@@ -188,7 +188,12 @@ zero. The former three-field-only parser rejected this legitimate five-field
 response. The app reads only indices 0/1/2, assigning status, mode and battery.
 Version 0.9.4 accepts exactly three or five signed int32 decimal fields with
 CRLF termination. The last two fields are validated as integers but are neither
-interpreted nor published as sensors. Their meanings remain unknown.
+interpreted nor published as sensors. Field 4 read 0 in every capture. Field 5
+behaved as a minute counter across nine polls on 22 September 2026 (AEST): 8,
+13, 32, 47, 88, 94, 99, 107 and 156, each step equal to the minutes elapsed,
+and 833 at 06:53 that morning was 13.9 hours after the robot went on its wall
+charger. It is consistent with minutes since power-on or since the last state
+change, but that is an observed hypothesis, not an app-derived meaning.
 A battery outside 0-100
 becomes unavailable, without clamping or preventing valid status/mode values
 from being used. Raw status and mode are retained alongside the app-derived
