@@ -7,6 +7,7 @@ from homeassistant.components.vacuum import (
 )
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .controls import async_control
 from .device import device_info
@@ -121,8 +122,11 @@ class AiperVacuum(CoordinatorEntity, StateVacuumEntity):
             "temperature_c": data.get("temperature"),
             "warning_code_raw": data.get("warning_code_raw"),
             "minutes_counter_raw": data.get("info_field_5_raw"),
+            # Local time, per the owner's reporting rule; the sensor keeps UTC.
             "last_successful_poll": (
-                last_success.isoformat() if last_success is not None else None
+                dt_util.as_local(last_success).isoformat()
+                if last_success is not None
+                else None
             ),
             "polling_status": coordinator.status,
             "consecutive_failures": coordinator.failures,
