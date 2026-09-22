@@ -17,6 +17,9 @@ from .device import device_info
 from .entity import AiperEntity
 from .s1_states import INFO_STATES, info_state
 
+# Coordinator-driven entities never call the robot themselves.
+PARALLEL_UPDATES = 0
+
 
 async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities(

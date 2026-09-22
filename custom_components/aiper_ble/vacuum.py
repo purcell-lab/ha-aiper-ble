@@ -13,6 +13,9 @@ from .entity import AiperEntity
 from .s1_states import info_state
 
 VACUUM_CONTROLS_OPTION = "confirm_vacuum_controls"
+# Start and stop send BLE commands through the shared poll/control mutex; one
+# at a time is the honest concurrency.
+PARALLEL_UPDATES = 1
 
 # Home Assistant has no charging activity; this robot has no dock, so "docked"
 # stands for "on its wall charger". Sunward is the app's intermittent cleaning

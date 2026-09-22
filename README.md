@@ -202,6 +202,20 @@ from a configuration-repository deployment to HACS, stop that deployment from
 overwriting this directory. Publishing this repository does not itself change
 any live HA installation or remove the old repository's copy.
 
+## Configuration options
+
+Open the integration's **Configure** dialog to change these. Every change
+reloads the entry and runs one poll if polling is enabled.
+
+| Option | Default | Effect |
+| --- | --- | --- |
+| Enable recurring BLE status queries | off | Turns on the polling cycle (S1_INFO, OpInfo, INFO, WARN over the HA route; S1_INFO and INFO over the direct-local adapter). |
+| Successful poll interval in seconds | 300 | Time from the end of one successful cycle to the start of the next, 300 to 3600. Failures back off from this value. |
+| I authorise recurring queries and will keep other BLE clients idle | off | Required with polling. Confirms that the app and other BLE clients stay closed while polling runs. |
+| Allow the legacy S1 protocol when advertisement evidence is missing | off | Lets polling and controls proceed when the cached advertisement lacks the company-zero data that proves the legacy protocol. Never overrides positive evidence of the newer protocol. |
+| Use saved local adapter directly (no proxies or Bleak) | off | Uses the BlueZ adapter saved at setup instead of HA-managed routes and proxies. Requires local adapter metadata in the entry. |
+| Enable vacuum entity start/stop | off | Lets the vacuum entity's buttons send the guarded start and stop commands without a per-call confirmation. Turn on only while the robot is in the water, unplugged, nobody is in the pool and the app is closed. |
+
 ## Vacuum entity
 
 `vacuum.aiper_surfer_s1` shows the robot's INFO-derived state as a Home
