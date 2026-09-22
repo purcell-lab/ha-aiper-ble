@@ -53,7 +53,11 @@ rules:
   devices: done
   diagnostics: done
   discovery: done
-  discovery-update-info: done
+  discovery-update-info:
+    status: exempt
+    comment: >
+      The Bluetooth address is the identity and never changes for a robot;
+      the advertised name varies by scanner spelling, so it is not rewritten.
   docs-data-update: done
   docs-examples: done
   docs-known-limitations: done

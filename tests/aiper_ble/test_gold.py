@@ -62,7 +62,8 @@ async def test_bluetooth_discovery_confirms_then_creates_entry(hass):
     assert result["result"].unique_id == TARGET.address
 
 
-async def test_discovery_of_configured_robot_updates_name_and_aborts(hass):
+async def test_discovery_of_configured_robot_aborts_without_touching_it(hass):
+    """Scanners spell the name differently; rewriting it would reload the entry."""
     entry = MockConfigEntry(
         domain=DOMAIN, data=asdict(TARGET), unique_id=TARGET.address
     )
@@ -70,12 +71,11 @@ async def test_discovery_of_configured_robot_updates_name_and_aborts(hass):
     result = await hass.config_entries.flow.async_init(
         DOMAIN,
         context={"source": config_entries.SOURCE_BLUETOOTH},
-        data=service_info("Aiper-Surfer S1-RENAMED"),
+        data=service_info("Aiper_Surfer S1_S1Y00000000"),
     )
     assert result["type"] is FlowResultType.ABORT
     assert result["reason"] == "already_configured"
-    assert entry.data["name"] == "Aiper-Surfer S1-RENAMED"
-    assert entry.data["address"] == TARGET.address
+    assert entry.data == asdict(TARGET)
 
 
 async def test_reconfigure_reselects_robot_and_reloads(hass, fake_bluez):
