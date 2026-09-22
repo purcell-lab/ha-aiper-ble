@@ -9,7 +9,9 @@ import binascii
 import json
 import math
 import re
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from typing import Any
 
 from .datapoints import MACHINE_FIELDS
 
@@ -30,7 +32,7 @@ class Listen:
 
     allow_missing_advertisement: bool = False
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if type(self.allow_missing_advertisement) is not bool:
             raise ProtocolError("invalid_legacy_probe_confirmation")
 
@@ -44,7 +46,7 @@ class Query:
     allow_missing_advertisement: bool = False
     query_type: str = "OpInfo"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.checksum_mode not in {"include_empty_crc", "omit_empty_crc"}:
             raise ProtocolError("invalid_checksum_mode")
         if self.write_mode not in {"command", "request"}:
@@ -65,7 +67,7 @@ class Control:
     write_mode: str = "request"
     query_type: str = "MODE"
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if self.action not in {"start_cleaning", "stop_cleaning"}:
             raise ProtocolError("invalid_control")
         if type(self.allow_missing_advertisement) is not bool:
@@ -78,7 +80,7 @@ class Control:
             raise ProtocolError("invalid_control")
 
 
-def crc16(data):
+def crc16(data: Iterable[int]) -> int:
     """Legacy CmdFactory Modbus CRC, NOT the newer SDK's 0x1021 algorithm."""
     crc = 0x9966
     for byte in data:
@@ -88,14 +90,15 @@ def crc16(data):
     return crc & 0xFFFF
 
 
-def xor(data):
+def xor(data: bytes | bytearray) -> bytes:
     return bytes(byte ^ XOR_KEY[index % 4] for index, byte in enumerate(data))
 
 
-def query_frame(query):
+def query_frame(query: Query | Control) -> bytes:
     """Build one fixed query or explicit control, never a generic command."""
     if not isinstance(query, (Query, Control)):
         raise ProtocolError("not_a_query")
+    command: dict[str, Any]
     if isinstance(query, Control):
         command = {
             "type": "Machine",
@@ -117,7 +120,7 @@ def query_frame(query):
     return base64.b64encode(xor(encoded)) + b"\n"
 
 
-def preview(query):
+def preview(query: Query | Control) -> dict[str, Any]:
     """Offline request inspection. No bus, account or hardware access."""
     frame = query_frame(query)
     return {
@@ -146,7 +149,7 @@ def preview(query):
     }
 
 
-def protocol_hint(device):
+def protocol_hint(device: Mapping[str, Any]) -> str:
     """Distinguish absent evidence from malformed evidence; neither is legacy."""
     manufacturer = device.get("ManufacturerData", {})
     if not isinstance(manufacturer, dict) or any(
@@ -165,18 +168,18 @@ def protocol_hint(device):
     return "ecdh" if value[0] == 1 else "legacy_xor"
 
 
-def chunks(frame, mtu=None):
+def chunks(frame: bytes, mtu: object = None) -> list[bytes]:
     """BlueZ negotiates MTU; absent metadata uses the ATT minimum payload."""
-    size = min(200, mtu - 3) if type(mtu) is int and mtu >= 23 else 20
+    size = min(200, mtu - 3) if isinstance(mtu, int) and mtu >= 23 else 20
     return [frame[index : index + size] for index in range(0, len(frame), size)]
 
 
-def _reject_constant(_value):
+def _reject_constant(_value: str) -> Any:
     raise ProtocolError("nonfinite_json")
 
 
-def _unique_keys(pairs):
-    result = {}
+def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
     for key, value in pairs:
         if key in result:
             raise ProtocolError("duplicate_json_key")
@@ -187,12 +190,12 @@ def _unique_keys(pairs):
 class Decoder:
     """Bounded incremental newline framing, including split/coalesced frames."""
 
-    def __init__(self):
+    def __init__(self) -> None:
         self.buffer = bytearray()
         self.total_bytes = 0
         self.notifications = 0
 
-    def feed(self, value):
+    def feed(self, value: object) -> list[dict[str, Any]]:
         if not isinstance(value, (bytes, bytearray, list)):
             raise ProtocolError("invalid_notification")
         self.notifications += 1
@@ -202,7 +205,7 @@ class Decoder:
         if any(type(item) is not int or not 0 <= item <= 255 for item in value):
             raise ProtocolError("invalid_notification")
         self.buffer.extend(value)
-        result = []
+        result: list[dict[str, Any]] = []
         while b"\n" in self.buffer:
             frame, _, rest = self.buffer.partition(b"\n")
             self.buffer = bytearray(rest)
@@ -229,22 +232,26 @@ class Decoder:
         return result
 
 
-def telemetry(response):
+def telemetry(response: Mapping[str, Any]) -> dict[str, int | float | bool]:
     """Allowlist scalar evidence only. No units, entity mappings or guessing."""
     machine = response.get("data", {}).get("Machine", {})
     if not isinstance(machine, dict):
         return {}
-    result = {}
+    result: dict[str, int | float | bool] = {}
     for key in MACHINE_FIELDS:
         value = machine.get(key)
-        if type(value) in (int, float, bool) and (
-            type(value) is not float or math.isfinite(value)
+        if (
+            isinstance(value, (int, float))
+            and type(value) in (int, float, bool)
+            and (type(value) is not float or math.isfinite(value))
         ):
             result[key] = value
     return result
 
 
-def response_evidence(response, query):
+def response_evidence(
+    response: Mapping[str, Any], query: Query | Control
+) -> dict[str, Any]:
     """Bounded numeric INFO evidence only, never the full device response."""
     if query.query_type != "INFO" or response.get("type") != "Machine":
         return {}
@@ -267,7 +274,11 @@ def response_evidence(response, query):
         and type(response.get("res")) is int
         and response["res"] == 0
     )
-    evidence = {"query": "INFO", "source": source, "crc_and_result_valid": valid}
+    evidence: dict[str, Any] = {
+        "query": "INFO",
+        "source": source,
+        "crc_and_result_valid": valid,
+    }
     if not valid:
         return evidence
     evidence["length"] = min(len(text), MAX_FRAME_BYTES)
@@ -289,7 +300,9 @@ def response_evidence(response, query):
     return evidence
 
 
-def query_telemetry(response, query):
+def query_telemetry(
+    response: Mapping[str, Any], query: Query | Control
+) -> dict[str, Any] | None:
     """Return numeric candidates for the selected query, or None if unrelated.
 
     S1_INFO is deliberately stricter than the app: exactly two numeric fields,
@@ -343,7 +356,7 @@ def query_telemetry(response, query):
         if not all(-(2**31) <= item < 2**31 for item in fields):
             raise ProtocolError("invalid_info_response")
         status, mode, battery = fields[:3]
-        values = {
+        values: dict[str, Any] = {
             "info_status_raw": status,
             "info_mode_raw": mode,
             # Preserve other valid fields, but never clamp a sentinel to 0/100.
