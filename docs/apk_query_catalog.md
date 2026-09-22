@@ -19,7 +19,7 @@ identifiers are included in this repository.
 | --- | --- | --- |
 | `OpInfo` | S1 panel reads Wi-Fi RSSI/name | Existing query; only RSSI returned in the observed reply |
 | `AT+S1_INFO?` | S1 panel reads temperature and solar state | Existing live-observed query; temperature scaled /10, solar remains raw |
-| `AT+INFO?` | S1 panel maps fields 0/1/2 to status/mode/battLevel; live five-field reply `0,0,93,0,155` | Battery %, raw status/mode; final two fields unknown and not entities |
+| `AT+INFO?` | S1 panel maps fields 0/1/2 to status/mode/battLevel; live five-field reply `0,0,93,0,155` | Battery %, raw status/mode; field 4 always 0 and field 5 observed as a minute counter, neither published as entities |
 | `AT+WARN?` | S1 panel parses first field as decimal Java Long and assigns warnCode; live raw 0 | Raw warning-code entity; fault meanings remain unverified |
 
 The S1 evidence is `com.aiper.device.surfer.ui.activity.S1PanelActivity`:
