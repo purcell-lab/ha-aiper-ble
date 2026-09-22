@@ -23,5 +23,5 @@
   "iot_class": "local_polling",
   "issue_tracker": "https://github.com/purcell-lab/ha-aiper-ble/issues",
   "requirements": [],
-  "version": "0.13.9"
+  "version": "0.13.10"
 }

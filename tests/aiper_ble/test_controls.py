@@ -20,7 +20,7 @@ from custom_components.aiper_ble.s1_states import info_state
 
 from .helpers import TARGET
 from .test_bluetooth import radio as radio
-from .test_polling import PATH, response, setup
+from .test_polling import OPTIONS, PATH, response, setup
 from .test_polling import transport as transport
 from .test_protocol import frame
 from .test_query import Bus, members, run
@@ -218,6 +218,27 @@ async def test_control_service_readback_and_transport_selection(
     assert c.runtime.task is None
     assert not c.last_update_success  # Never optimistic sensor state.
     assert c.next_attempt > asyncio.get_running_loop().time()
+
+
+async def test_verified_control_marks_data_stale_without_error_log(hass, transport):
+    """Retiring pre-control telemetry is expected behaviour, not a failure."""
+    from custom_components.aiper_ble import coordinator as module
+
+    entry = await setup(hass, OPTIONS)
+    c = entry.runtime_data.coordinator
+    c.next_attempt = 0
+    await c.async_refresh()
+    assert c.last_update_success
+    with (
+        patch(f"{PATH}.coordinator.query_once", fake_exchange([], after="0,0,80")),
+        patch.object(module.LOGGER, "error") as error_log,
+        patch.object(module.LOGGER, "warning") as warning_log,
+    ):
+        await call(hass, entry, "stop_cleaning")
+    assert not c.last_update_success
+    assert c.status == "awaiting_poll_after_control"
+    assert hass.states.get("sensor.aiper_ble_temperature").state == "unavailable"
+    assert not error_log.called and not warning_log.called
 
 
 @pytest.mark.parametrize("field", ["confirm_app_closed", "confirm_safe_to_move"])

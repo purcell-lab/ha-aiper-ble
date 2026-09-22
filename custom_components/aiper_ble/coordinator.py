@@ -204,6 +204,22 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not was_successful:
             self.async_update_listeners()
 
+    @callback
+    def mark_stale(self, reason: str) -> None:
+        """Retire retained data without Home Assistant's error log.
+
+        After a control the last cycle predates the command, so it must not be
+        presented as current; nothing has failed, so this is not an error.
+        """
+        self.last_exception = UpdateFailed(reason)
+        self.last_update_success = False
+        self.async_update_listeners()
+        LOGGER.debug(
+            "%s; next poll due in %.0f s",
+            reason,
+            max(0.0, self.next_attempt - asyncio.get_running_loop().time()),
+        )
+
     async def async_poll_now(self) -> dict[str, Any]:
         """Run one existing guarded cycle immediately, never concurrently.
 
