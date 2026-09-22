@@ -9,6 +9,9 @@ import asyncio
 from typing import Any
 
 import bleak_retry_connector
+from bleak import BleakClient
+from bleak.backends.characteristic import BleakGATTCharacteristic
+from bleak.backends.device import BLEDevice
 from bleak.exc import BleakError
 from bleak_retry_connector import establish_connection
 from homeassistant.components import bluetooth
@@ -47,7 +50,7 @@ SECURITY_FLAGS = {
 }
 
 
-def error_category(error):
+def error_category(error: BaseException) -> str:
     """Fixed categories only: backend exception strings can contain secrets."""
     if isinstance(error, TimeoutError):
         return "timeout"
@@ -60,7 +63,9 @@ def error_category(error):
     return "unexpected"
 
 
-def single_attempt_client_class(diagnostics=None):
+def single_attempt_client_class(
+    diagnostics: TransportDiagnostics | None = None,
+) -> type[bleak_retry_connector.BleakClientWithServiceCache]:
     """Resolve HA's replacement at call time, never capture an unwrapped base.
 
     HA patches bleak_retry_connector during Bluetooth setup. Our component may
@@ -70,12 +75,12 @@ def single_attempt_client_class(diagnostics=None):
     class SingleAttemptClient(bleak_retry_connector.BleakClientWithServiceCache):
         """Retain failed/cancelled clients and prevent helper connect retries."""
 
-        def __init__(self, *args, owners, **kwargs):
+        def __init__(self, *args: Any, owners: list[Any], **kwargs: Any) -> None:
             super().__init__(*args, **kwargs)
             self.attempted = False
             owners.append(self)
 
-        async def connect(self, **kwargs):
+        async def connect(self, **kwargs: Any) -> Any:
             if self.attempted:
                 if diagnostics is not None:
                     diagnostics.data["retry_calls_refused"] += 1
@@ -99,7 +104,13 @@ def single_attempt_client_class(diagnostics=None):
     return SingleAttemptClient
 
 
-def validate_routes(hass, target, query, *, connected=False):
+def validate_routes(
+    hass: HomeAssistant,
+    target: Target,
+    query: Query | Control,
+    *,
+    connected: bool = False,
+) -> BLEDevice:
     """Validate all currently selectable routes; HA chooses the actual backend."""
     if not target.name.startswith(("Aiper-Surfer S1-", "Aiper_Surfer S1_")):
         raise ProtocolError("unsupported_model")
@@ -136,23 +147,23 @@ def validate_routes(hass, target, query, *, connected=False):
     return device
 
 
-def endpoint(client, query):
+def endpoint(client: BleakClient, query: Query | Control) -> BleakGATTCharacteristic:
     """Require one exact legacy service/characteristic and reject ECDH."""
     services = list(client.services)
     chars = [char for service in services for char in service.characteristics]
     if any(char.uuid.lower() == KEY_EXCHANGE_CHARACTERISTIC for char in chars):
         raise ProtocolError("ecdh_gatt_unsupported")
-    matches = [s for s in services if s.uuid.lower() == EXPECTED_SERVICE]
-    if len(matches) != 1:
+    service_matches = [s for s in services if s.uuid.lower() == EXPECTED_SERVICE]
+    if len(service_matches) != 1:
         raise ProtocolError("ambiguous_service")
-    matches = [
+    char_matches = [
         char
-        for char in matches[0].characteristics
+        for char in service_matches[0].characteristics
         if char.uuid.lower() == EXPECTED_CHARACTERISTIC
     ]
-    if len(matches) != 1:
+    if len(char_matches) != 1:
         raise ProtocolError("ambiguous_characteristic")
-    char = matches[0]
+    char = char_matches[0]
     flags = set(char.properties)
     if flags & SECURITY_FLAGS:
         raise ProtocolError("security_gated_endpoint")
@@ -181,10 +192,10 @@ async def query_once(
     Always retain a client reference before connecting so timeout/unload can
     attempt bounded cleanup even if establish_connection never returns.
     """
-    owners = []
-    char = None
+    owners: list[Any] = []
+    char: BleakGATTCharacteristic | None = None
     notify_attempted = False
-    queue = asyncio.Queue(maxsize=32)
+    queue: asyncio.Queue[bytes | ProtocolError] = asyncio.Queue(maxsize=32)
     decoder = Decoder()
     overflow = False
     accepting = False
@@ -203,16 +214,17 @@ async def query_once(
         "stop_notify": 5,
         "disconnect": 10,
     }
-    connect_timeout = exchange_timeout = None
+    connect_timeout: asyncio.Timeout | None = None
+    exchange_timeout: asyncio.Timeout | None = None
 
-    def phase(name):
+    def phase(name: str) -> None:
         report["phase"] = name
         diagnostics.phase(name)
 
     phase("route_validation")
     diagnostics.snapshot(hass, target.address, "before_connect")
 
-    def notified(_char, data):
+    def notified(_char: BleakGATTCharacteristic, data: bytearray) -> None:
         nonlocal overflow
         if not accepting:
             return
@@ -351,7 +363,7 @@ async def query_once(
         cleanup_failed = False
         for client in owners:
             diagnostics.client(client)
-            if notify_attempted:
+            if notify_attempted and char is not None:
                 diagnostics.phase("stop_notify")
                 try:
                     await asyncio.wait_for(client.stop_notify(char), 5)

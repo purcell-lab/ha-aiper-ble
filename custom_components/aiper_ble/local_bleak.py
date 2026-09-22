@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 
 from .probe import Target, open_bluez
 from .protocol import Control, ProtocolError, Query
+from .transport_diagnostics import TransportDiagnostics
 
 SUPPORTED_VERSIONS = {
     "habluetooth": "6.26.11",
@@ -24,12 +25,12 @@ SUPPORTED_VERSIONS = {
 MAX_ADVERTISEMENT_AGE = 10
 
 
-def runtime_versions():
+def runtime_versions() -> dict[str, str]:
     """Read package metadata in HA's executor, never block its event loop."""
     return {name: version(name) for name in SUPPORTED_VERSIONS}
 
 
-def assert_local_backend(client, target):
+def assert_local_backend(client: Any, target: Target) -> None:
     """Fail before subscription/write if HA did not retain the expected radio."""
     device = getattr(client, "_connected_device", None)
     scanner = getattr(client, "_connected_scanner", None)
@@ -45,7 +46,12 @@ def assert_local_backend(client, target):
         raise ProtocolError("local_bleak_route_mismatch")
 
 
-def pinned_client_class(base, target, diagnostics, versions):
+def pinned_client_class(
+    base: type[Any],
+    target: Target,
+    diagnostics: TransportDiagnostics,
+    versions: dict[str, str],
+) -> type[Any]:
     """Retain HA slot accounting, callbacks and cleanup, changing selection only."""
     if target.adapter_path is None or target.adapter_address is None:
         raise ProtocolError("local_adapter_required")
@@ -57,10 +63,11 @@ def pinned_client_class(base, target, diagnostics, versions):
     ):
         raise ProtocolError("local_bleak_wrapper_unsupported")
 
-    class PinnedLocalClient(base):
+    # The base is resolved at call time, so mypy cannot see it as a class.
+    class PinnedLocalClient(base):  # type: ignore[misc]
         """One explicitly authorised client restricted to the saved local radio."""
 
-        def _async_get_best_available_backend_and_device(self, manager):
+        def _async_get_best_available_backend_and_device(self, manager: Any) -> Any:
             routes = [
                 route
                 for route in manager.async_scanner_devices_by_address(
