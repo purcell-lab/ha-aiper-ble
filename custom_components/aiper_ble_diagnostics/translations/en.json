@@ -19,17 +19,19 @@
     "step": {
       "init": {
         "title": "Guarded Surfer S1 polling",
-        "description": "Experimental polling using the selected transport: direct local BlueZ when Use saved local adapter is enabled, otherwise HA Bluetooth with active proxies. Local mode never falls back to a proxy. Local polling uses S1_INFO and INFO; HA polling also uses OpInfo and WARN. Enabling polling authorises recurring telemetry writes, subscriptions and disconnects, including after restart, but never cleaning commands. Start/stop are separate actions requiring per-call safety confirmation. Keep other clients idle. INFO state labels are app-derived; temperature location, solar and fault meanings remain unverified. Failures back off; unsafe cleanup suspends polling.",
+        "description": "Experimental polling using the selected transport: direct local BlueZ when Use saved local adapter is enabled, otherwise HA Bluetooth with active proxies. Local mode never falls back to a proxy. Local polling uses S1_INFO and INFO; HA polling also uses OpInfo and WARN. Enabling polling authorises recurring telemetry writes, subscriptions and disconnects, including after restart, but never cleaning commands. Start/stop are separate actions requiring per-call safety confirmation, or the vacuum entity when its option below is enabled. Keep other clients idle. INFO state labels are app-derived; temperature location, solar and fault meanings remain unverified. Failures back off; unsafe cleanup suspends polling.",
         "data": {
           "polling_enabled": "Enable recurring BLE status queries",
           "poll_interval": "Successful poll interval in seconds (300 to 3600)",
           "confirm_exclusive_access": "I authorise recurring queries and will keep other BLE clients idle",
           "allow_missing_advertisement": "Allow the legacy S1 protocol when advertisement evidence is missing",
-          "use_local_adapter": "Use saved local adapter directly (no proxies or Bleak)"
+          "use_local_adapter": "Use saved local adapter directly (no proxies or Bleak)",
+        "confirm_vacuum_controls": "Enable vacuum entity start/stop (I confirm the robot is in water, unplugged and nobody is in the pool)"
         },
         "data_description": {
           "allow_missing_advertisement": "Persistent protocol exception for polling and explicitly requested control actions; not permission to move the robot. ECDH hints, key-exchange services, malformed advertisements and identity or endpoint changes still veto the operation.",
-          "use_local_adapter": "Applies to polling, isolated queries and explicit start/stop actions. Requires saved local adapter metadata. Uses direct BlueZ D-Bus with no automatic transport fallback. Disable recurring polling before isolated tests."
+          "use_local_adapter": "Applies to polling, isolated queries and explicit start/stop actions. Requires saved local adapter metadata. Uses direct BlueZ D-Bus with no automatic transport fallback. Disable recurring polling before isolated tests.",
+        "confirm_vacuum_controls": "Lets the vacuum entity's start and stop buttons send the same guarded MODE setters as the start_cleaning and stop_cleaning actions, without a per-call confirmation. Keep the app closed. Turn this off whenever the robot is out of the water, on its charger or people are in the pool. The entity's state is available either way."
         }
       }
     },

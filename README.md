@@ -173,6 +173,24 @@ from a configuration-repository deployment to HACS, stop that deployment from
 overwriting this directory. Publishing this repository does not itself change
 any live HA installation or remove the old repository's copy.
 
+## Vacuum entity
+
+`vacuum.aiper_surfer_s1` shows the robot's INFO-derived state as a Home
+Assistant vacuum: `cleaning` for working or sunward, `idle` for standby, and
+`docked` while on its wall charger (this robot has no dock; Home Assistant has
+no charging activity). It is unavailable until a verified polling cycle, or a
+verified control readback, has produced a state. It never guesses.
+
+Its start and stop buttons are disabled until the option **Enable vacuum
+entity start/stop** is turned on in the integration's options. That option is
+the standing equivalent of the per-call confirmations the `start_cleaning` and
+`stop_cleaning` actions take: turn it on only while the robot is in the water,
+unplugged, nobody is in the pool and the app is closed, and turn it off
+otherwise. With it on, a button press runs exactly the same guarded sequence as
+the action (preflight, one setter, one INFO readback, no retry) and the entity
+shows the readback state until the next polling cycle. An unconfirmed command
+raises an error and leaves the entity unavailable until the next poll.
+
 ## Poll now
 
 ```yaml

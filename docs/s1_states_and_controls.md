@@ -71,6 +71,16 @@ with mode 0 on the wall charger below 100%, and status 3 with mode 0 at 100%.
 Unknown status codes remain `unknown_code`, rather than inheriting the app's
 potentially misleading standby fallback. Existing raw status/mode sensors stay.
 
+Version 0.11.0 adds `vacuum.aiper_surfer_s1` over the same data: `cleaning`
+for working or sunward, `idle` for standby, `docked` for charging or fully
+charged (Home Assistant's only charging-like activity; the robot has no dock),
+and no activity for updating or unknown codes. After a verified control the
+entity shows the readback state, marked `state_source: control_readback`,
+until the next polling cycle replaces it. Its start and stop call the same
+bounded control path as the actions and are refused unless the
+`confirm_vacuum_controls` option is enabled, which stands in for the per-call
+safety confirmations.
+
 The sensor deliberately does not fabricate app cloud-connectivity, decoded
 warning or external OTA overlays. Normal disconnect after a bounded BLE query
 does not mean the robot is offline. A failed poll makes the sensor unavailable.
