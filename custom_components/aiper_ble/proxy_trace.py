@@ -6,6 +6,7 @@ change HA's shared API subscription, firmware logger levels or production route.
 
 import asyncio
 import re
+from collections.abc import Callable
 from importlib.metadata import version
 from ipaddress import ip_address
 from typing import Any
@@ -15,6 +16,7 @@ from bleak_esphome.backend.client import ESPHomeClient
 from bluetooth_data_tools import monotonic_time_coarse
 from habluetooth import get_manager
 from habluetooth.wrappers import HaBleakClientWrapper
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.util import dt as dt_util
 
@@ -126,7 +128,7 @@ EVENTS = (
 )
 
 
-def runtime_versions():
+def runtime_versions() -> dict[str, str]:
     """Executor-only runtime package inventory."""
     return {name: version(name) for name in SUPPORTED_VERSIONS}
 
@@ -134,12 +136,12 @@ def runtime_versions():
 class EventCapture:
     """Discard raw text immediately; retain a fixed event vocabulary only."""
 
-    def __init__(self, address):
+    def __init__(self, address: str) -> None:
         self.address = address
-        self.bound_slot = None
+        self.bound_slot: int | None = None
         self.started = asyncio.get_running_loop().time()
         self.accepting = True
-        self.data = {
+        self.data: dict[str, Any] = {
             "clock": "HA receipt UTC and monotonic offset, not MCU event time",
             "events": [],
             "lines_seen": 0,
@@ -158,7 +160,7 @@ class EventCapture:
             },
         }
 
-    def receive(self, response):
+    def receive(self, response: Any) -> None:
         if not self.accepting:
             return
         raw = response.message
@@ -193,7 +195,7 @@ class EventCapture:
             parsed = re.fullmatch(pattern, match[2])
             if parsed is None:
                 continue
-            item = {
+            item: dict[str, Any] = {
                 "event": event,
                 "received_utc": dt_util.utcnow().isoformat(),
                 "offset_ms": round(
@@ -210,14 +212,14 @@ class EventCapture:
             return
         counts["target_message_unmatched"] += 1
 
-    def _receive_modern(self, text):
+    def _receive_modern(self, text: str) -> bool:
         match = MODERN_HEADER.fullmatch(text)
         if match is None:
             return False
         counts = self.data["format_counts"]
         counts["modern_header"] += 1
-        tag, slot, address, body = match.groups()
-        slot = int(slot)
+        tag, slot_text, address, body = match.groups()
+        slot = int(slot_text)
         if address is not None and address.upper() != self.address:
             counts["other_device"] += 1
             if self.bound_slot == slot:
@@ -257,7 +259,9 @@ class EventCapture:
         counts["target_message_unmatched"] += 1
         return True
 
-    def _modern_event(self, event, values, attribution):
+    def _modern_event(
+        self, event: str, values: dict[str, int], attribution: str
+    ) -> None:
         self.data["events"].append(
             {
                 "event": event,
@@ -271,10 +275,10 @@ class EventCapture:
         )
 
 
-def resolve_proxy(hass, entry_id):
+def resolve_proxy(hass: HomeAssistant, entry_id: str) -> tuple[ConfigEntry, Any, str]:
     """Resolve an already-loaded ESPHome proxy; never return credentials."""
     entry = hass.config_entries.async_get_entry(entry_id)
-    runtime = getattr(entry, "runtime_data", None)
+    runtime: Any = getattr(entry, "runtime_data", None)
     if (
         entry is None
         or entry.domain != "esphome"
@@ -295,7 +299,7 @@ def resolve_proxy(hass, entry_id):
     return entry, runtime, source
 
 
-def select_route(manager, target, source):
+def select_route(manager: Any, target: Target, source: str) -> Any:
     """Require exactly one fresh, entirely idle, registered proxy route."""
     routes = [
         route
@@ -343,8 +347,9 @@ def pinned_client_class(
     if not issubclass(base, HaBleakClientWrapper):
         raise ProtocolError("proxy_trace_wrapper_unsupported")
 
-    class PinnedProxyClient(base):
-        def _async_get_best_available_backend_and_device(self, manager):
+    # The base is resolved at call time, so mypy cannot see it as a class.
+    class PinnedProxyClient(base):  # type: ignore[misc]
+        def _async_get_best_available_backend_and_device(self, manager: Any) -> Any:
             route = select_route(manager, target, source)
             backend = self._async_get_backend_for_ble_device(
                 manager, route.scanner, route.ble_device
@@ -426,10 +431,10 @@ async def query_once(
         proxy_firmware=runtime.device_info.esphome_version,
         log_cleanup="not_started",
     )
-    unsubscribe = None
+    unsubscribe: Callable[[], None] | None = None
     subscription_attempted = False
 
-    def guard():
+    def guard() -> None:
         current_entry, current_runtime, current_source = resolve_proxy(hass, entry_id)
         if (
             not client.is_connected
@@ -484,7 +489,7 @@ async def query_once(
         except Exception:  # noqa: BLE001 - socket teardown below is authoritative
             pass
         finally:
-            if unsubscribe:
+            if unsubscribe is not None:
                 try:
                     unsubscribe()
                 except Exception:  # noqa: BLE001 - still close our socket

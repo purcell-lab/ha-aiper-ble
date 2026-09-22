@@ -36,7 +36,7 @@ class Target:
     adapter_path: str | None = None
     adapter_address: str | None = None
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if not isinstance(self.address, str) or not re.fullmatch(
             r"(?:[0-9A-F]{2}:){5}[0-9A-F]{2}", self.address
         ):
@@ -54,7 +54,7 @@ class Target:
             raise ValueError("Only explicitly named Aiper devices are eligible.")
 
     @property
-    def device_path(self):
+    def device_path(self) -> str:
         if self.adapter_path is None:
             raise ValueError("Local diagnostic adapter is not configured.")
         return self.adapter_path + "/dev_" + self.address.replace(":", "_")
@@ -65,12 +65,12 @@ class ProbeError(RuntimeError):
 
 
 class BluezError(ProbeError):
-    def __init__(self, name):
-        self.name = name
-        super().__init__(name)
+    def __init__(self, name: str | None) -> None:
+        self.name = name or "org.bluez.Error.Unknown"
+        super().__init__(self.name)
 
 
-def unpack(value):
+def unpack(value: Any) -> Any:
     """Unwrap D-Bus Variants without exposing unrelated device properties."""
     if hasattr(value, "value"):
         return unpack(value.value)
@@ -81,7 +81,7 @@ def unpack(value):
     return value
 
 
-def rssi_dbm(properties):
+def rssi_dbm(properties: Mapping[str, Any]) -> int | None:
     """Return the pinned adapter's own last observed signal level, or None.
 
     BlueZ drops RSSI from a disconnected device once it is no longer being
@@ -92,7 +92,7 @@ def rssi_dbm(properties):
     return value if type(value) is int and -127 <= value <= 20 else None
 
 
-def device_summary(properties):
+def device_summary(properties: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "AddressType": (
             properties.get("AddressType")
@@ -141,13 +141,25 @@ def candidates(objects: Mapping[str, Any]) -> dict[str, Target]:
     return result
 
 
-def validate(objects, target):
-    adapter = objects.get(target.adapter_path, {}).get("org.bluez.Adapter1", {})
+def reply_body(reply: Message | None) -> list[Any]:
+    """Unwrap one D-Bus reply body; an error reply raises BluezError."""
+    if reply is None:
+        raise ProbeError("D-Bus call returned no reply.")
+    if reply.message_type == MessageType.ERROR:
+        raise BluezError(reply.error_name)
+    body: list[Any] = unpack(reply.body)
+    return body
+
+
+def validate(objects: Mapping[str, Any], target: Target) -> dict[str, Any]:
+    adapter: dict[str, Any] = objects.get(target.adapter_path or "", {}).get(
+        "org.bluez.Adapter1", {}
+    )
     if adapter.get("Address", "").upper() != target.adapter_address:
         raise ProbeError("Adapter identity differs from the configured local adapter.")
     if not adapter.get("Powered"):
         raise ProbeError("Adapter is off; this probe will not enable it.")
-    device = objects.get(target.device_path, {}).get(DEVICE_IF, {})
+    device: dict[str, Any] = objects.get(target.device_path, {}).get(DEVICE_IF, {})
     if (
         device.get("Address", "").upper() != target.address
         or device.get("Name") != target.name
@@ -168,14 +180,14 @@ def validate(objects, target):
     return device
 
 
-def inventory(objects, target):
+def inventory(objects: Mapping[str, Any], target: Target) -> list[dict[str, Any]]:
     """Return UUIDs and properties only. Never return cached Value fields."""
-    services = []
+    services: list[dict[str, Any]] = []
     for path, interfaces in sorted(objects.items()):
         props = interfaces.get(SERVICE_IF)
         if not props or props.get("Device") != target.device_path:
             continue
-        entry = {
+        entry: dict[str, Any] = {
             "uuid": props["UUID"],
             "primary": props.get("Primary"),
             "characteristics": [],
@@ -200,9 +212,11 @@ def inventory(objects, target):
     return services
 
 
-def endpoint_properties(objects, target):
+def endpoint_properties(
+    objects: Mapping[str, Any], target: Target
+) -> tuple[str, dict[str, Any]]:
     """Resolve one exact endpoint on the pinned connected robot."""
-    adapter = objects.get(target.adapter_path, {}).get("org.bluez.Adapter1", {})
+    adapter = objects.get(target.adapter_path or "", {}).get("org.bluez.Adapter1", {})
     device = objects.get(target.device_path, {}).get(DEVICE_IF, {})
     if (
         adapter.get("Address", "").upper() != target.adapter_address
@@ -236,7 +250,9 @@ def endpoint_properties(objects, target):
     return chars[0]
 
 
-def validate_query_protocol(objects, target, query):
+def validate_query_protocol(
+    objects: Mapping[str, Any], target: Target, query: Query | Control | Listen
+) -> str:
     """Negative evidence always vetoes; absence requires a per-call opt-in.
 
     This does not authorise writes on its own. query_endpoint also requires a
@@ -263,7 +279,7 @@ def validate_query_protocol(objects, target, query):
     return hint
 
 
-def readable_path(objects, target):
+def readable_path(objects: Mapping[str, Any], target: Target) -> str:
     """A raw read never authorises a write or a notification subscription."""
     path, props = endpoint_properties(objects, target)
     flags = set(props.get("Flags", []))
@@ -277,7 +293,7 @@ def readable_path(objects, target):
     return path
 
 
-def sample_hex(value):
+def sample_hex(value: object) -> str:
     """Accept one bounded byte array, with no parsing or protocol assumptions."""
     if not isinstance(value, (bytes, bytearray, list)):
         raise ProbeError("Read returned an invalid byte array.")
@@ -291,13 +307,29 @@ def sample_hex(value):
 class Bluez:
     """Allow metadata/connect; optionally one exact ReadValue with empty options."""
 
-    def __init__(self, bus, target=None, *, allow_read=False):
+    def __init__(
+        self, bus: MessageBus, target: Target | None = None, *, allow_read: bool = False
+    ) -> None:
         self.bus, self.target = bus, target
         self._allow_read = allow_read
         self._read_used = False
-        self._read_path = None
+        self._read_path: str | None = None
 
-    async def call(self, path, interface, member, signature="", body=None):
+    @property
+    def pinned(self) -> Target:
+        """The selected robot; metadata-only sessions may have none."""
+        if self.target is None:
+            raise ProbeError("No robot selected for this operation.")
+        return self.target
+
+    async def call(
+        self,
+        path: str,
+        interface: str,
+        member: str,
+        signature: str = "",
+        body: list[Any] | None = None,
+    ) -> Any:
         allowed = {
             ("/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects"),
         }
@@ -325,45 +357,46 @@ class Bluez:
             self._read_path = None
         elif (path, interface, member) not in allowed:
             raise ProbeError("Operation outside diagnostic allowlist.")
-        reply = await self.bus.call(
-            Message(
-                destination="org.bluez",
-                path=path,
-                interface=interface,
-                member=member,
-                signature=signature,
-                body=body or [],
+        return reply_body(
+            await self.bus.call(
+                Message(
+                    destination="org.bluez",
+                    path=path,
+                    interface=interface,
+                    member=member,
+                    signature=signature,
+                    body=body or [],
+                )
             )
         )
-        if reply.message_type == MessageType.ERROR:
-            raise BluezError(reply.error_name)
-        return unpack(reply.body)
 
-    async def objects(self):
-        return (
+    async def objects(self) -> dict[str, Any]:
+        objects: dict[str, Any] = (
             await self.call(
                 "/", "org.freedesktop.DBus.ObjectManager", "GetManagedObjects"
             )
         )[0]
+        return objects
 
-    async def device(self):
-        return (
+    async def device(self) -> dict[str, Any]:
+        device: dict[str, Any] = (
             await self.call(
-                self.target.device_path,
+                self.pinned.device_path,
                 "org.freedesktop.DBus.Properties",
                 "GetAll",
                 "s",
                 [DEVICE_IF],
             )
         )[0]
+        return device
 
-    async def connect(self):
-        await self.call(self.target.device_path, DEVICE_IF, "Connect")
+    async def connect(self) -> None:
+        await self.call(self.pinned.device_path, DEVICE_IF, "Connect")
 
-    async def disconnect(self):
-        await self.call(self.target.device_path, DEVICE_IF, "Disconnect")
+    async def disconnect(self) -> None:
+        await self.call(self.pinned.device_path, DEVICE_IF, "Disconnect")
 
-    async def read_sample(self):
+    async def read_sample(self) -> Any:
         if not self._allow_read or self._read_used or self.target is None:
             raise ProbeError("Read not authorised or already attempted.")
         self._read_used = True
@@ -379,7 +412,7 @@ class Bluez:
             self._read_path = None
 
 
-def error_code(exc):
+def error_code(exc: BaseException) -> str:
     """Expose actionable fixed codes, never identifiers or payload text."""
     if isinstance(exc, TimeoutError):
         return "timeout"
@@ -589,6 +622,8 @@ async def open_bluez(
 
             if allow_read:
                 raise ProbeError("Cannot combine raw read and protocol query.")
+            if target is None:
+                raise ProbeError("A protocol query requires a selected robot.")
             transport = ListenBluez if isinstance(query, Listen) else QueryBluez
             yield transport(bus, target, query)
         else:

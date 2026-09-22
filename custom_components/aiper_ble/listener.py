@@ -1,11 +1,13 @@
 """Bounded notification observation. No application query, read or control."""
 
 import asyncio
+from typing import Any
 
-from dbus_fast import MessageType, Variant
+from dbus_fast import Message, MessageType, Variant
+from dbus_fast.aio import MessageBus
 
-from .probe import CHAR_IF, BluezError, ProbeError
-from .protocol import MAX_TOTAL_BYTES, Decoder, Listen, ProtocolError
+from .probe import CHAR_IF, BluezError, ProbeError, Target
+from .protocol import MAX_TOTAL_BYTES, Control, Decoder, Listen, ProtocolError, Query
 from .telemetry import (
     NOTIFY_CLEANUP_SECONDS,
     PROPERTIES,
@@ -20,22 +22,37 @@ SETUP_SECONDS = 15
 class ListenBluez(QueryBluez):
     """Reuse exact subscription/routing permits, but deny all application I/O."""
 
-    def __init__(self, bus, target, query):
+    def __init__(
+        self, bus: MessageBus, target: Target, query: Query | Control | Listen
+    ) -> None:
         if not isinstance(query, Listen):
             raise ProtocolError("not_a_listener")
         super().__init__(bus, target, query)
 
-    async def call(self, path, interface, member, signature="", body=None):
+    async def call(
+        self,
+        path: str,
+        interface: str,
+        member: str,
+        signature: str = "",
+        body: list[Any] | None = None,
+    ) -> Any:
         if member in {"WriteValue", "ReadValue"}:
             raise ProbeError("Application I/O forbidden in listen-only mode.")
         return await super().call(path, interface, member, signature, body)
 
-    async def _exact(self, path, member, signature="", body=None):
+    async def _exact(
+        self,
+        path: str | None,
+        member: str,
+        signature: str = "",
+        body: list[Any] | None = None,
+    ) -> Any:
         if member not in {"StartNotify", "StopNotify"}:
             raise ProbeError("Only notification subscription is authorised.")
         return await super()._exact(path, member, signature, body)
 
-    async def query_once(self, report):
+    async def query_once(self, report: dict[str, Any]) -> None:
         """Transport hook used by the shared probe; deliberately sends no query."""
         if self._query_used:
             raise ProtocolError("listen_already_attempted")
@@ -50,15 +67,17 @@ class ListenBluez(QueryBluez):
             protocol_responses=[],
             response_checksum_validation="not_verified",
         )
-        queue = asyncio.Queue(maxsize=32)
+        queue: asyncio.Queue[tuple[float, Any]] = asyncio.Queue(maxsize=32)
         overflow = False
         handler_added = match_attempted = notify_attempted = False
-        path = rule = owner = None
-        started = None
+        path: str | None = None
+        owner: str | None = None
+        rule = ""
+        started: float | None = None
         decoder = Decoder()
         loop = asyncio.get_running_loop()
 
-        def handler(message):
+        def handler(message: Message) -> None:
             nonlocal overflow
             if (
                 started is None
@@ -89,7 +108,7 @@ class ListenBluez(QueryBluez):
         try:
             async with asyncio.timeout(SETUP_SECONDS):
                 report["stage"] = "listen_validation"
-                path, _ = query_endpoint(await self.objects(), self.target, self.query)
+                path, _ = query_endpoint(await self.objects(), self.pinned, self.query)
                 self._query_path = path
                 owner = (await self._daemon("GetNameOwner", "org.bluez"))[0]
                 rule = (
@@ -103,7 +122,7 @@ class ListenBluez(QueryBluez):
                 await self._daemon("AddMatch", rule)
                 # Recheck after asynchronous routing setup, before subscribing.
                 fresh_path, _ = query_endpoint(
-                    await self.objects(), self.target, self.query
+                    await self.objects(), self.pinned, self.query
                 )
                 if fresh_path != path:
                     raise ProtocolError("notification_endpoint_changed")
@@ -122,7 +141,7 @@ class ListenBluez(QueryBluez):
                     raise
                 report["notification_started"] = True
                 fresh_path, props = query_endpoint(
-                    await self.objects(), self.target, self.query, active=True
+                    await self.objects(), self.pinned, self.query, active=True
                 )
                 if fresh_path != path or props.get("Notifying") is not True:
                     raise ProtocolError("notification_endpoint_changed")
