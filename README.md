@@ -231,8 +231,9 @@ short connection per fixed query (S1_INFO, OpInfo, INFO, WARN over Home
 Assistant's Bluetooth routes; S1_INFO and INFO over the direct-local adapter),
 verifies each reply's CRC, and publishes all values at once. The interval is
 300 s by default and counts from the end of the previous cycle. It can be set
-as low as 60 s; an interval under 300 s applies only while the signal the last
-cycle saw was at least -90 dBm, and a weaker link polls every 300 s until the
+as low as 60 s; an interval under 300 s applies only while the robot's
+advertisement is being received at -90 dBm or better (judged when each cycle
+ends, from the live signal), and a weaker link polls every 300 s until the
 signal recovers. A failed cycle backs off from 300 s, doubling up to an hour,
 and makes measured values unavailable until the next success. After a Home Assistant restart the first cycle waits for
 startup plus 45 s so Bluetooth proxies can reconnect. Controls never run
@@ -368,12 +369,17 @@ are unavailable while polling is disabled or suspended.
 ## Signal strength
 
 `sensor.aiper_ble_signal_strength` is the RSSI, in dBm, of the robot's
-advertisement as seen by the proxy or adapter the last cycle connected
-through, read just before that connection. It is the observer's reading, not
-the robot's, so it changes with the route Home Assistant selects. It is
-unavailable after a cycle that selected no route, such as when the robot is
-off. The `backend` and `scanner_type` attributes say which kind of route it
-was.
+advertisement on the route Home Assistant currently rates best, taken
+passively from the advertisements Home Assistant already receives. It needs
+no connection and causes no radio activity. It updates at most every 10 s
+while the value changes, and becomes unavailable as soon as Home Assistant
+stops receiving the advertisement, such as when the robot is off. It is the
+observer's reading, not the robot's, so it changes with the route. The
+`scanner_type` attribute says which kind of route is carrying it, `last_seen`
+is the time of the latest advertisement in local time, and
+`last_cycle_route_rssi_dbm` is the reading the last polling cycle's own route
+saw just before connecting. The same live value decides whether a polling
+interval under 300 s is in force.
 
 ## Poll now
 

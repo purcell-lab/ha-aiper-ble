@@ -260,11 +260,14 @@ class WaterTemperatureSensor(AiperEntity, SensorEntity):
 
 
 class SignalStrengthSensor(AiperEntity, SensorEntity):
-    """Signal of the route the last cycle connected through, as HA observed it.
+    """Live signal of the robot's advertisement on HA's best route, passively.
 
-    Not the robot's own measurement: it is the proxy's or local adapter's
-    reading of the robot's advertisement just before the connection. It goes
-    unavailable when a cycle selected no route at all.
+    Updated from the advertisements Home Assistant already receives, at most
+    every SIGNAL_PUBLISH_SECONDS while it changes, without any connection.
+    Not the robot's own measurement: it is the proxy's or adapter's reading.
+    Unavailable when no route is receiving the advertisement, or when the
+    passive monitor could not start; the last cycle's route reading stays in
+    the attributes.
     """
 
     _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
@@ -276,19 +279,27 @@ class SignalStrengthSensor(AiperEntity, SensorEntity):
         super().__init__(entry, "signal_strength")
         self.entity_id = "sensor.aiper_ble_signal_strength"
 
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        monitor = self.entry.runtime_data.signal
+        if monitor is not None:
+            self.async_on_remove(monitor.async_add_listener(self.async_write_ha_state))
+
     @property
     def available(self) -> bool:
-        return self.polling_active and self.coordinator.signal_strength is not None
+        return self.polling_active and self.coordinator.live_signal is not None
 
     @property
     def native_value(self) -> int | float | None:
-        return self.coordinator.signal_strength
+        return self.coordinator.live_signal
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        route = self.coordinator.last_route or {}
+        monitor = self.entry.runtime_data.signal
+        seen = monitor.seen_at if monitor is not None else None
         return {
-            "backend": route.get("backend"),
-            "scanner_type": route.get("scanner_type"),
-            "source": "observer_reading_of_robot_advertisement_before_connect",
+            "last_seen": dt_util.as_local(seen).isoformat() if seen else None,
+            "scanner_type": monitor.scanner_type if monitor is not None else None,
+            "last_cycle_route_rssi_dbm": self.coordinator.signal_strength,
+            "source": "passive_advertisement_on_best_route",
         }
