@@ -371,8 +371,10 @@ are unavailable while polling is disabled or suspended.
 `sensor.aiper_ble_signal_strength` is the RSSI, in dBm, of the robot's
 advertisement on the route Home Assistant currently rates best, taken
 passively from the advertisements Home Assistant already receives. It needs
-no connection and causes no radio activity. It updates at most every 10 s
-while the value changes, and becomes unavailable as soon as Home Assistant
+no connection and causes no radio activity. Home Assistant reports a new
+advertisement to the integration only when its payload or route changes, so
+the cached advertisement is also sampled every 10 s to pick up signal-only
+changes. It updates at most every 10 s while the value changes, and becomes unavailable as soon as Home Assistant
 stops receiving the advertisement, such as when the robot is off. It is the
 observer's reading, not the robot's, so it changes with the route. The
 `scanner_type` attribute says which kind of route is carrying it, `last_seen`
