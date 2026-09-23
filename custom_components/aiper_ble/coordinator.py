@@ -34,8 +34,12 @@ QueryOnce = Callable[
 
 LOGGER = logging.getLogger(__name__)
 DEFAULT_INTERVAL = 300
-MIN_INTERVAL = 300
+MIN_INTERVAL = 60
 MAX_INTERVAL = 3600
+# An interval shorter than SLOW_INTERVAL is used only while the last cycle's
+# route reported at least FAST_POLL_MIN_RSSI; a weaker link polls slowly.
+SLOW_INTERVAL = 300
+FAST_POLL_MIN_RSSI = -90
 POLL_SECONDS = 180
 SINGLE_QUERY_SECONDS = 60
 # A verified control is confirmed by a full cycle this long after it finishes.
@@ -237,6 +241,16 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if value is None:
             value = self.last_poll_queries[-1].get("preconnect_rssi_dbm")
         return value if isinstance(value, (int, float)) else None
+
+    @property
+    def effective_interval(self) -> int:
+        """The configured interval, or SLOW_INTERVAL while the link is too weak."""
+        if self.interval >= SLOW_INTERVAL:
+            return self.interval
+        signal = self.signal_strength
+        if signal is not None and signal >= FAST_POLL_MIN_RSSI:
+            return self.interval
+        return SLOW_INTERVAL
 
     @callback
     def schedule_post_control_poll(self) -> None:
@@ -569,12 +583,15 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 report.setdefault("error_category", "protocol")
             report["status"] = self.status
             report.setdefault("error_code", self.error_code)
+            # Backoff starts from the slow interval so a fast configured
+            # interval does not shorten the retreat from a failing link.
             self.update_interval = (
                 None
                 if self.suspended
                 else timedelta(
                     seconds=min(
-                        MAX_INTERVAL, self.interval * 2 ** min(self.failures, 4)
+                        MAX_INTERVAL,
+                        max(self.interval, SLOW_INTERVAL) * 2 ** min(self.failures, 4),
                     )
                 )
             )
@@ -588,6 +605,9 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 {key: item[key] for key in POLL_DETAIL_FIELDS if key in item}
                 for item in reports
             ]
+            if self.status == "ok":
+                # Decided from this cycle's own route signal.
+                self.update_interval = timedelta(seconds=self.effective_interval)
             # Start the cooldown after cleanup, not before a slow connection.
             delay = (
                 self.update_interval.total_seconds()

@@ -230,9 +230,11 @@ Polling is local push-free polling over Bluetooth LE: every cycle opens one
 short connection per fixed query (S1_INFO, OpInfo, INFO, WARN over Home
 Assistant's Bluetooth routes; S1_INFO and INFO over the direct-local adapter),
 verifies each reply's CRC, and publishes all values at once. The interval is
-300 s by default and counts from the end of the previous cycle. A failed cycle
-doubles the interval up to an hour and makes measured values unavailable until
-the next success. After a Home Assistant restart the first cycle waits for
+300 s by default and counts from the end of the previous cycle. It can be set
+as low as 60 s; an interval under 300 s applies only while the signal the last
+cycle saw was at least -90 dBm, and a weaker link polls every 300 s until the
+signal recovers. A failed cycle backs off from 300 s, doubling up to an hour,
+and makes measured values unavailable until the next success. After a Home Assistant restart the first cycle waits for
 startup plus 45 s so Bluetooth proxies can reconnect. Controls never run
 automatically.
 
@@ -312,7 +314,7 @@ reloads the entry and runs one poll if polling is enabled.
 | Option | Default | Effect |
 | --- | --- | --- |
 | Enable recurring BLE status queries | off | Turns on the polling cycle (S1_INFO, OpInfo, INFO, WARN over the HA route; S1_INFO and INFO over the direct-local adapter). |
-| Successful poll interval in seconds | 300 | Time from the end of one successful cycle to the start of the next, 300 to 3600. Failures back off from this value. |
+| Successful poll interval in seconds | 300 | Time from the end of one successful cycle to the start of the next, 60 to 3600. A value under 300 applies only while the last cycle's signal was at least -90 dBm; otherwise 300 is used. Failures back off from 300 or the configured value, whichever is larger. |
 | I authorise recurring queries and will keep other BLE clients idle | off | Required with polling. Confirms that the app and other BLE clients stay closed while polling runs. |
 | Allow the legacy S1 protocol when advertisement evidence is missing | off | Lets polling and controls proceed when the cached advertisement lacks the company-zero data that proves the legacy protocol. Never overrides positive evidence of the newer protocol. |
 | Use saved local adapter directly (no proxies or Bleak) | off | Uses the BlueZ adapter saved at setup instead of HA-managed routes and proxies. Requires local adapter metadata in the entry. |

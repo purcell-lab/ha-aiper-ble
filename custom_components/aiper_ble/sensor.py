@@ -23,6 +23,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import DOMAIN, SIGNAL_RESULT
+from .coordinator import FAST_POLL_MIN_RSSI
 from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
 from .device import device_info
 from .entity import AiperEntity
@@ -144,6 +145,8 @@ class PollingStatusSensor(AiperEntity, SensorEntity):
             "error_code": self.coordinator.error_code,
             "consecutive_failures": self.coordinator.failures,
             "configured_interval_seconds": self.coordinator.interval,
+            "effective_interval_seconds": self.coordinator.effective_interval,
+            "fast_poll_min_rssi_dbm": FAST_POLL_MIN_RSSI,
             "configured_queries": list(self.coordinator.poll_queries),
             "temperature_sensor_location": "unverified",
             "solar_status_mapping": "unverified",
