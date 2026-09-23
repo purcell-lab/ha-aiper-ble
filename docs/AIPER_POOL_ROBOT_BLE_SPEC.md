@@ -327,7 +327,7 @@ The following are implementation policies, not measured firmware capacities:
 | Frame / total capture / notification limits | 4,096 bytes / 8,192 bytes / 64 notifications |
 | Stop-notify / disconnect deadlines | 5 seconds / 10 seconds |
 | Whole-cycle bound | 180 seconds |
-| Normal polling interval | Default/minimum 300 seconds; maximum 3,600 seconds |
+| Normal polling interval | Default 300 seconds; minimum 60 seconds (used only while the last route signal is at least -90 dBm, else 300); maximum 3,600 seconds |
 | Failure handling | Exponential backoff, capped at 3,600 seconds; unsafe cleanup suspends polling |
 
 Identity and protocol evidence are rechecked before connecting, after connecting,

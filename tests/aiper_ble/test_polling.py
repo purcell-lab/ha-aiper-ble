@@ -482,11 +482,59 @@ async def test_options_require_consent_and_reload_disables_polling(hass, transpo
     assert hass.states.get("sensor.aiper_ble_polling_status").state == "disabled"
 
 
-@pytest.mark.parametrize("value", [False, -1, 299, 3601, "abc"])
+@pytest.mark.parametrize("value", [False, -1, 59, 3601, "abc"])
 def test_invalid_stored_interval_falls_back_to_safe_default(hass, value):
     entry = MockConfigEntry(domain=DOMAIN, options={**OPTIONS, "poll_interval": value})
     coordinator = AiperCoordinator(hass, entry, Runtime(TARGET))
     assert coordinator.interval == 300
+
+
+def route_signal(rssi):
+    return [
+        {
+            "query_type": "WARN",
+            "transport_diagnostics": {
+                "backend": "bleak_esphome",
+                "selected_route": "route_1",
+                "route_snapshots": {
+                    "before_connect": {
+                        "routes": [{"route_id": "route_1", "rssi_dbm": rssi}]
+                    }
+                },
+            },
+        }
+    ]
+
+
+def test_fast_interval_only_while_the_signal_supports_it(hass):
+    entry = MockConfigEntry(domain=DOMAIN, options={**OPTIONS, "poll_interval": 60})
+    coordinator = AiperCoordinator(hass, entry, Runtime(TARGET))
+    assert coordinator.interval == 60
+    assert coordinator.effective_interval == 300  # no cycle yet
+    coordinator.last_poll_queries = route_signal(-70)
+    assert coordinator.effective_interval == 60
+    coordinator.last_poll_queries = route_signal(-90)
+    assert coordinator.effective_interval == 60
+    coordinator.last_poll_queries = route_signal(-91)
+    assert coordinator.effective_interval == 300
+    slow = AiperCoordinator(hass, entry, Runtime(TARGET))
+    slow.interval = 600
+    slow.last_poll_queries = route_signal(-99)
+    assert slow.effective_interval == 600  # only fast intervals are gated
+
+
+async def test_cycle_without_route_signal_polls_slowly_and_backs_off_from_slow(
+    hass, transport
+):
+    entry = await setup(hass, {**OPTIONS, "poll_interval": 60})
+    coordinator = entry.runtime_data.coordinator
+    assert coordinator.status == "ok"
+    assert coordinator.update_interval.total_seconds() == 300
+    transport[1].append(lambda bus: setattr(bus, "failure", "Connect"))
+    coordinator.next_attempt = 0
+    await coordinator.async_refresh()
+    assert coordinator.failures == 1
+    assert coordinator.update_interval.total_seconds() == 600
 
 
 async def test_failed_robot_does_not_prevent_entry_loading(hass, transport):

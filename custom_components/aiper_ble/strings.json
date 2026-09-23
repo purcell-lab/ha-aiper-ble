@@ -39,7 +39,7 @@
         "description": "Experimental polling using the selected transport: direct local BlueZ when Use saved local adapter is enabled, otherwise HA Bluetooth with active proxies. Local mode never falls back to a proxy. Local polling uses S1_INFO and INFO; HA polling also uses OpInfo and WARN. Enabling polling authorises recurring telemetry writes, subscriptions and disconnects, including after restart, but never cleaning commands. Start/stop are separate actions requiring per-call safety confirmation, or the vacuum entity when its option below is enabled. Keep other clients idle. INFO state labels are app-derived; temperature location, solar and fault meanings remain unverified. Failures back off; unsafe cleanup suspends polling.",
         "data": {
           "polling_enabled": "Enable recurring BLE status queries",
-          "poll_interval": "Successful poll interval in seconds (300 to 3600)",
+          "poll_interval": "Successful poll interval in seconds (60 to 3600; under 300 applies only while the signal is at least -90 dBm)",
           "confirm_exclusive_access": "I authorise recurring queries and will keep other BLE clients idle",
           "allow_missing_advertisement": "Allow the legacy S1 protocol when advertisement evidence is missing",
           "use_local_adapter": "Use saved local adapter directly (no proxies or Bleak)",
