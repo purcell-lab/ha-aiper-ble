@@ -1,7 +1,12 @@
 """Signal strength: passive, from the advertisement stream, throttled."""
 
+from datetime import timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
+
+from bluetooth_data_tools import monotonic_time_coarse
+from homeassistant.util import dt as dt_util
+from pytest_homeassistant_custom_component.common import async_fire_time_changed
 
 from custom_components.aiper_ble import signal as signal_module
 
@@ -20,6 +25,7 @@ class Radio:
         self.unavailable = None
         self.matcher = None
         self.unsubscribed = 0
+        self.cached = None
 
     def register(self, hass, callback, matcher, mode):
         self.advertisement = callback
@@ -33,6 +39,18 @@ class Radio:
 
     def _unsub(self):
         self.unsubscribed += 1
+
+    def last_service_info(self, hass, address, connectable=True):
+        assert address == TARGET.address
+        return self.cached
+
+    def cache(self, rssi, age=0.0, source="proxy-1"):
+        self.cached = SimpleNamespace(
+            address=TARGET.address,
+            rssi=rssi,
+            source=source,
+            time=monotonic_time_coarse() - age,
+        )
 
     def advertise(self, rssi, source="proxy-1"):
         self.advertisement(
@@ -50,6 +68,17 @@ async def start(hass, options=None):
     ):
         entry = await setup(hass, options)
     return entry, radio
+
+
+def sampling(radio):
+    return patch.object(
+        signal_module.bluetooth, "async_last_service_info", radio.last_service_info
+    )
+
+
+async def tick(hass, seconds=11):
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=seconds))
+    await hass.async_block_till_done()
 
 
 async def test_live_value_from_advertisements_without_any_connection(hass, transport):
@@ -87,6 +116,26 @@ async def test_changes_are_throttled_and_loss_is_immediate(hass, transport):
     assert entry.runtime_data.coordinator.live_signal is None
 
 
+async def test_sampling_picks_up_signal_only_changes_and_loss(hass, transport):
+    """HA's callback skips RSSI-only changes; the cached advertisement has them."""
+    entry, radio = await start(hass)
+    with sampling(radio):
+        radio.cache(-72, age=1.5)
+        await tick(hass)
+        state = hass.states.get(ENTITY)
+        assert state.state == "-72"
+        seen = dt_util.parse_datetime(state.attributes["last_seen"])
+        assert 0 <= (dt_util.utcnow() - seen).total_seconds() < 5
+        radio.cache(-97)
+        await tick(hass)
+        assert hass.states.get(ENTITY).state == "-97"
+        assert entry.runtime_data.coordinator.live_signal == -97
+        radio.cached = None  # HA no longer holds an advertisement
+        await tick(hass)
+        assert hass.states.get(ENTITY).state == "unavailable"
+        assert len(transport[0]) == 4  # setup's cycle only; sampling is passive
+
+
 async def test_invalid_rssi_is_ignored(hass, transport):
     _, radio = await start(hass)
     radio.advertise("strong")
@@ -109,8 +158,11 @@ async def test_fast_interval_follows_the_live_signal(hass, transport):
 
 async def test_unload_unsubscribes_and_monitor_failure_is_tolerated(hass, transport):
     entry, radio = await start(hass)
+    monitor = entry.runtime_data.signal
+    assert monitor.active
     assert await hass.config_entries.async_unload(entry.entry_id)
-    assert radio.unsubscribed == 2
+    assert radio.unsubscribed == 2  # the sampling timer is HA's own subscription
+    assert not monitor.active
     with patch.object(
         signal_module.bluetooth,
         "async_register_callback",

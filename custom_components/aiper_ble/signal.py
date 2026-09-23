@@ -7,9 +7,10 @@ Bluetooth manager (the sensor then simply stays unavailable).
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from time import monotonic
 
+from bluetooth_data_tools import monotonic_time_coarse
 from homeassistant.components import bluetooth
 from homeassistant.components.bluetooth import (
     BluetoothCallbackMatcher,
@@ -18,6 +19,7 @@ from homeassistant.components.bluetooth import (
     BluetoothServiceInfoBleak,
 )
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.util import dt as dt_util
 
 from .transport_diagnostics import number, optional
@@ -26,6 +28,10 @@ LOGGER = logging.getLogger(__name__)
 # Advertisements arrive several times a second; publish a changed value at
 # most this often. Loss of the advertisement is published at once.
 SIGNAL_PUBLISH_SECONDS = 10
+# Home Assistant dispatches its callback only when the advertisement's payload
+# or source changes, not on signal alone, so the cached advertisement is also
+# sampled at this interval. Reading the cache causes no radio activity.
+SIGNAL_SAMPLE_SECONDS = 10
 SCANNER_TYPES = {"usb", "uart", "remote", "unknown"}
 
 
@@ -61,6 +67,11 @@ class SignalMonitor:
                     self.hass, self._unavailable, self.address, connectable=True
                 )
             )
+            self._unsubscribe.append(
+                async_track_time_interval(
+                    self.hass, self._sample, timedelta(seconds=SIGNAL_SAMPLE_SECONDS)
+                )
+            )
         except Exception:  # noqa: BLE001 - optional observation only
             LOGGER.debug("Passive signal monitoring unavailable")
             self.async_stop()
@@ -94,18 +105,27 @@ class SignalMonitor:
         return kind if isinstance(kind, str) and kind in SCANNER_TYPES else None
 
     @callback
+    def _sample(self, _now: datetime) -> None:
+        """Read HA's cached advertisement; it carries signal changes the callback skips."""
+        info = optional(
+            lambda: bluetooth.async_last_service_info(
+                self.hass, self.address, connectable=True
+            )
+        )
+        if info is None:
+            if self.rssi is not None:
+                self._unavailable(None)
+            return
+        if self._observe(info) and self.rssi != self._published:
+            self._publish(monotonic())  # samples are already spaced out
+
+    @callback
     def _advertisement(
         self, info: BluetoothServiceInfoBleak, _change: BluetoothChange
     ) -> None:
-        rssi = number(info.rssi, -127, 20)
-        if rssi is None:
+        if not self._observe(info) or self.rssi == self._published:
             return
-        self.rssi = rssi
-        self.seen_at = dt_util.utcnow()
-        self.source = info.source
         now = monotonic()
-        if rssi == self._published:
-            return
         if (
             self._published is None
             or self._published_at is None
@@ -114,7 +134,19 @@ class SignalMonitor:
             self._publish(now)
 
     @callback
-    def _unavailable(self, _info: BluetoothServiceInfoBleak) -> None:
+    def _observe(self, info: BluetoothServiceInfoBleak) -> bool:
+        """Record a valid advertisement reading; False if it carried no usable RSSI."""
+        rssi = number(optional(lambda: info.rssi), -127, 20)
+        if rssi is None:
+            return False
+        self.rssi = rssi
+        self.source = optional(lambda: info.source)
+        age = number(optional(lambda: monotonic_time_coarse() - info.time), 0, 86400)
+        self.seen_at = dt_util.utcnow() - timedelta(seconds=age or 0)
+        return True
+
+    @callback
+    def _unavailable(self, _info: BluetoothServiceInfoBleak | None) -> None:
         self.rssi = None
         self.source = None
         self._publish(monotonic())
