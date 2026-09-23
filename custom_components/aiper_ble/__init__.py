@@ -45,6 +45,7 @@ from .errors import failure, validation
 from .probe import Target, open_bluez
 from .probe import probe as run_probe
 from .protocol import Listen, Query, preview
+from .signal import SignalMonitor
 
 PLATFORMS = [Platform.BUTTON, Platform.SENSOR, Platform.VACUUM]
 STARTUP_SETTLE_SECONDS = 45
@@ -60,6 +61,7 @@ class Runtime:
     task: asyncio.Task[Any] | None = None
     closing: bool = False
     coordinator: AiperCoordinator | None = None
+    signal: SignalMonitor | None = None
 
     async def async_close(self) -> None:
         """Cancel an in-flight probe and allow its disconnect cleanup to finish."""
@@ -406,6 +408,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = entry.runtime_data.coordinator = AiperCoordinator(
         hass, entry, entry.runtime_data
     )
+    # Passive: reads the advertisement stream HA already receives.
+    signal = entry.runtime_data.signal = SignalMonitor(hass, coordinator.address)
+    signal.async_start()
+    entry.async_on_unload(signal.async_stop)
     if coordinator.enabled:
         if coordinator.use_local_adapter or hass.state is CoreState.running:
             # An offline robot must not prevent loading the diagnostic actions.

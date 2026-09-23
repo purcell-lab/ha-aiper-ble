@@ -138,6 +138,7 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     ) -> None:
         self.runtime = runtime
         self.entry_id = entry.entry_id
+        self.address: str = runtime.target.address
         self.enabled = (
             entry.options.get("polling_enabled") is True
             and entry.options.get("confirm_exclusive_access") is True
@@ -243,11 +244,24 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return value if isinstance(value, (int, float)) else None
 
     @property
+    def live_signal(self) -> int | float | None:
+        """Current advertisement RSSI from the passive monitor, if it is running."""
+        monitor = self.runtime.signal
+        return monitor.rssi if monitor is not None and monitor.active else None
+
+    @property
     def effective_interval(self) -> int:
-        """The configured interval, or SLOW_INTERVAL while the link is too weak."""
+        """The configured interval, or SLOW_INTERVAL while the link is too weak.
+
+        Judged from the advertisement being received now when the passive
+        monitor runs, otherwise from the route the last cycle used.
+        """
         if self.interval >= SLOW_INTERVAL:
             return self.interval
-        signal = self.signal_strength
+        monitor = self.runtime.signal
+        signal = (
+            self.live_signal if monitor and monitor.active else self.signal_strength
+        )
         if signal is not None and signal >= FAST_POLL_MIN_RSSI:
             return self.interval
         return SLOW_INTERVAL
