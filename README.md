@@ -206,8 +206,11 @@ any live HA installation or remove the old repository's copy.
 
 The Aiper Surfer S1 (solar pool skimmer) is supported over the legacy
 Bluetooth LE protocol it exposes. The Aiper EcoSurfer M2 pairs with the same
-app and is accepted for setup so the same fixed, guarded queries can be tried
-on it; whether it answers them is not yet established. Setup accepts robots
+app and answers the same generic status queries (INFO, WARN, OpInfo) on the
+same endpoint, verified on a robot on 6 November 2026 (AEST); it does not
+answer the S1-specific S1_INFO query, so an M2 entry polls without it and has
+no temperature, solar or time-zone sensors and no water temperature sensor.
+Start and stop have not been exercised on an M2. Setup accepts robots
 whose Bluetooth name starts with `Aiper-Surfer S1-`, `Aiper_Surfer S1_`,
 `Aiper-EcoSurfer M2-` or `Aiper_EcoSurfer M2_`. Robots that advertise the
 newer key-exchange protocol are vetoed before any write. Other Aiper models

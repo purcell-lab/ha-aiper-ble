@@ -46,6 +46,17 @@ SINGLE_QUERY_SECONDS = 60
 POST_CONTROL_SECONDS = 20
 LOCAL_POLL_QUERIES = ("S1_INFO", "INFO")
 HA_POLL_QUERIES = ("S1_INFO", "OpInfo", "INFO", "WARN")
+# The EcoSurfer M2 answers the generic status queries on the S1's endpoint
+# but not S1_INFO (verified on 6 November 2026 AEST: INFO, WARN and OpInfo
+# completed with valid CRCs; S1_INFO drew a reply the parser does not accept).
+MODEL_POLL_QUERIES: dict[str, tuple[tuple[str, ...], tuple[str, ...]]] = {
+    "Surfer S1": (LOCAL_POLL_QUERIES, HA_POLL_QUERIES),
+    "EcoSurfer M2": (("INFO",), ("OpInfo", "INFO", "WARN")),
+}
+# Values only the S1's S1_INFO query provides; absent on other models.
+S1_INFO_KEYS = frozenset(
+    {"temperature", "temperature_raw", "solar_status_raw", "s1_timezone"}
+)
 LOCAL_BLEAK_SERVICE = "query_opinfo_local_bleak"
 PROXY_TRACE_SERVICE = "query_opinfo_proxy_trace"
 ISOLATED_QUERIES = {
@@ -150,9 +161,11 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.allow_missing = entry.options.get("allow_missing_advertisement") is True
         self.use_local_adapter = entry.options.get("use_local_adapter") is True
         self.transport = "local_bluez" if self.use_local_adapter else "ha_bluetooth"
-        self.poll_queries = (
-            LOCAL_POLL_QUERIES if self.use_local_adapter else HA_POLL_QUERIES
+        self.model = runtime.target.model or "Surfer S1"
+        local_queries, ha_queries = MODEL_POLL_QUERIES.get(
+            self.model, MODEL_POLL_QUERIES["Surfer S1"]
         )
+        self.poll_queries = local_queries if self.use_local_adapter else ha_queries
         self.status = "waiting" if self.enabled else "disabled"
         self.error_code: str | None = None
         self._suspended = False

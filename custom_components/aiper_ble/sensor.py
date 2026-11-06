@@ -23,7 +23,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util import slugify
 
 from .const import DOMAIN, SIGNAL_RESULT
-from .coordinator import FAST_POLL_MIN_RSSI
+from .coordinator import FAST_POLL_MIN_RSSI, S1_INFO_KEYS
 from .datapoints import DEFAULT_ENABLED, SENSOR_NAMES
 from .device import device_info
 from .entity import AiperEntity
@@ -38,13 +38,21 @@ async def async_setup_entry(
     entry: ConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
+    # Values from the S1_INFO query exist only on the Surfer S1.
+    has_s1_info = "S1_INFO" in entry.runtime_data.coordinator.poll_queries or (
+        entry.runtime_data.target.model == "Surfer S1"
+    )
     async_add_entities(
         [
             ResultSensor(entry),
-            *[TelemetrySensor(entry, key) for key in SENSOR_NAMES],
+            *[
+                TelemetrySensor(entry, key)
+                for key in SENSOR_NAMES
+                if has_s1_info or key not in S1_INFO_KEYS
+            ],
             PollingStatusSensor(entry),
             OperatingStateSensor(entry),
-            WaterTemperatureSensor(entry),
+            *([WaterTemperatureSensor(entry)] if has_s1_info else []),
             SignalStrengthSensor(entry),
         ]
     )
