@@ -169,7 +169,10 @@ def test_models_by_name():
     assert p.model_of("Aiper_EcoSurfer M2_MS6TEST") == "EcoSurfer M2"
     assert p.model_of("Aiper-Scuba X9-TEST") is None
     assert p.model_of(None) is None
-    assert p.Target("AA:BB:CC:DD:EE:01", "Aiper-EcoSurfer M2-MS6TEST").model == "EcoSurfer M2"
+    assert (
+        p.Target("AA:BB:CC:DD:EE:01", "Aiper-EcoSurfer M2-MS6TEST").model
+        == "EcoSurfer M2"
+    )
     assert p.Target("AA:BB:CC:DD:EE:01", "Aiper-Scuba X9-TEST").model is None
 
 

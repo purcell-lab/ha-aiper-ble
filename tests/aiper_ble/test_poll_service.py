@@ -294,11 +294,16 @@ async def test_ecosurfer_m2_entry_gets_its_own_device_name_and_default_ids(
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
     await hass.async_block_till_done()
-    device = dr.async_get(hass).async_get_device({(DOMAIN, TARGET.address)})
+    device = dr.async_get(hass).async_get_device_by_identifier(
+        (DOMAIN, TARGET.address), entry.entry_id
+    )
     assert device is not None
     assert device.name == "Aiper EcoSurfer M2 (BLE)"
     assert device.model == "EcoSurfer M2"
-    ids = {r.entity_id for r in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)}
+    ids = {
+        r.entity_id
+        for r in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)
+    }
     assert "vacuum.aiper_surfer_s1" not in ids
     assert any(i.startswith("vacuum.aiper_ecosurfer_m2") for i in ids)
     assert not any(i.startswith("sensor.aiper_ble_") for i in ids)

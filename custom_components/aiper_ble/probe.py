@@ -20,7 +20,9 @@ MODELS: dict[str, tuple[str, ...]] = {
     "Surfer S1": ("Aiper-Surfer S1-", "Aiper_Surfer S1_"),
     "EcoSurfer M2": ("Aiper-EcoSurfer M2-", "Aiper_EcoSurfer M2_"),
 }
-SUPPORTED_PREFIXES = tuple(prefix for prefixes in MODELS.values() for prefix in prefixes)
+SUPPORTED_PREFIXES = tuple(
+    prefix for prefixes in MODELS.values() for prefix in prefixes
+)
 
 
 def model_of(name: object) -> str | None:
