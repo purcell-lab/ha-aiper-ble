@@ -37,14 +37,24 @@ class Listen:
             raise ProtocolError("invalid_legacy_probe_confirmation")
 
 
+# An exploratory status query: one upper-case AT keyword, nothing else.
+EXPLORATORY_QUERY = re.compile(r"[A-Z][A-Z0-9_]{1,15}")
+
+
 @dataclass(frozen=True)
 class Query:
-    """One of four fixed status requests; no caller-supplied command or data."""
+    """One of four fixed status requests, or one explicitly exploratory keyword.
+
+    An exploratory query sends AT+<keyword>? exactly like the fixed status
+    requests and accepts whatever single Machine reply comes back, recording
+    bounded evidence about it instead of interpreting it as telemetry.
+    """
 
     checksum_mode: str
     write_mode: str
     allow_missing_advertisement: bool = False
     query_type: str = "OpInfo"
+    exploratory: bool = False
 
     def __post_init__(self) -> None:
         if self.checksum_mode not in {"include_empty_crc", "omit_empty_crc"}:
@@ -53,7 +63,10 @@ class Query:
             raise ProtocolError("invalid_write_mode")
         if type(self.allow_missing_advertisement) is not bool:
             raise ProtocolError("invalid_legacy_probe_confirmation")
-        if self.query_type not in {"OpInfo", "S1_INFO", "INFO", "WARN"}:
+        if self.exploratory:
+            if not EXPLORATORY_QUERY.fullmatch(self.query_type):
+                raise ProtocolError("invalid_query_type")
+        elif self.query_type not in {"OpInfo", "S1_INFO", "INFO", "WARN"}:
             raise ProtocolError("invalid_query_type")
 
 
@@ -109,7 +122,7 @@ def query_frame(query: Query | Control) -> bytes:
     else:
         command = (
             {"type": "Machine", "data": {"cmd": f"AT+{query.query_type}?"}}
-            if query.query_type in {"S1_INFO", "INFO", "WARN"}
+            if query.exploratory or query.query_type in {"S1_INFO", "INFO", "WARN"}
             else {"type": "OpInfo", "data": {}}
         )
     if query.query_type != "OpInfo" or query.checksum_mode == "include_empty_crc":
@@ -253,6 +266,8 @@ def response_evidence(
     response: Mapping[str, Any], query: Query | Control
 ) -> dict[str, Any]:
     """Bounded numeric INFO evidence only, never the full device response."""
+    if isinstance(query, Query) and query.exploratory:
+        return exploratory_evidence(response, query)
     if query.query_type != "INFO" or response.get("type") != "Machine":
         return {}
     data = response.get("data")
@@ -300,6 +315,54 @@ def response_evidence(
     return evidence
 
 
+REPLY_TEXT_CHARS = re.compile(r"[^A-Za-z0-9 +\-.,:;=_/?]")
+REPLY_TEXT_LIMIT = 96
+
+
+def exploratory_evidence(response: Mapping[str, Any], query: Query) -> dict[str, Any]:
+    """What an unknown keyword drew: bounded, printable, never the raw frame.
+
+    The reply text is kept only for an exploratory query the owner asked for,
+    limited in length and character set so no binary or control content is
+    retained; the raw frame, keys and identifiers are never included.
+    """
+    if response.get("type") != "Machine":
+        return {}
+    data = response.get("data")
+    if not isinstance(data, dict):
+        return {}
+    report = data.get("report")
+    source = "report" if isinstance(report, str) else "ack"
+    text = data.get(source)
+    if not isinstance(text, str):
+        return {"query": query.query_type, "source": source, "reply": "not_text"}
+    checksum = response.get("chksum")
+    encoded = json.dumps(
+        data, separators=(",", ":"), ensure_ascii=False, allow_nan=False
+    ).encode("utf-8")
+    valid = (
+        type(checksum) is int
+        and 0 <= checksum <= 65535
+        and checksum == crc16(encoded)
+        and type(response.get("res")) is int
+        and response["res"] == 0
+    )
+    body = text.removesuffix("\r\n").removesuffix("\n")
+    return {
+        "query": query.query_type,
+        "source": source,
+        "crc_and_result_valid": valid,
+        "res": response.get("res") if type(response.get("res")) is int else None,
+        "length": min(len(text), MAX_FRAME_BYTES),
+        "terminator": (
+            "CRLF" if text.endswith("\r\n") else "LF" if text.endswith("\n") else "none"
+        ),
+        "matches_keyword": body.startswith(f"+{query.query_type}:"),
+        "reply_text": REPLY_TEXT_CHARS.sub("?", body)[:REPLY_TEXT_LIMIT],
+        "reply_truncated": len(body) > REPLY_TEXT_LIMIT,
+    }
+
+
 def query_telemetry(
     response: Mapping[str, Any], query: Query | Control
 ) -> dict[str, Any] | None:
@@ -309,6 +372,10 @@ def query_telemetry(
     CRLF termination, bounded decimal notation and an int32 solar state.
     The app strips two trailing characters; CRLF was subsequently observed on S1.
     """
+    if isinstance(query, Query) and query.exploratory:
+        # Any single Machine reply completes an exploratory exchange; the
+        # evidence, not telemetry, is the result.
+        return {} if response["type"] == "Machine" else None
     if query.query_type == "OpInfo":
         return telemetry(response) if response["type"].casefold() == "opinfo" else None
     if response["type"] != "Machine":

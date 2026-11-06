@@ -102,6 +102,9 @@
     },
     "discover": {
       "service": "mdi:magnify"
+    },
+    "query_exploratory": {
+      "service": "mdi:flask-outline"
     }
   }
 }

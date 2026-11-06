@@ -58,6 +58,7 @@ def test_service_descriptions_and_translation_match():
             "protocol_preview",
             "query_once",
             "listen_once",
+            "query_exploratory",
         }
         == set(strings["services"])
     )

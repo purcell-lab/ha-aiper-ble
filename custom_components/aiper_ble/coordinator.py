@@ -22,7 +22,14 @@ from .errors import validation
 from .local_bleak import query_once as local_bleak_query_once
 from .local_transport import query_once as local_query_once
 from .probe import Target
-from .protocol import Control, ProtocolError, Query, crc16, query_telemetry
+from .protocol import (
+    EXPLORATORY_QUERY,
+    Control,
+    ProtocolError,
+    Query,
+    crc16,
+    query_telemetry,
+)
 from .s1_states import info_state
 
 if TYPE_CHECKING:
@@ -59,6 +66,7 @@ S1_INFO_KEYS = frozenset(
 )
 LOCAL_BLEAK_SERVICE = "query_opinfo_local_bleak"
 PROXY_TRACE_SERVICE = "query_opinfo_proxy_trace"
+EXPLORATORY_SERVICE = "query_exploratory"
 ISOLATED_QUERIES = {
     "query_s1_info": "S1_INFO",
     "query_opinfo": "OpInfo",
@@ -123,7 +131,9 @@ def verified_values(response: object, query: Query | Control) -> dict[str, Any]:
     values = query_telemetry(response, query)
     if values is None:
         raise ProtocolError("response_query_mismatch")
-    if isinstance(query, Control) or query.query_type in {"INFO", "WARN"}:
+    if isinstance(query, Control) or query.exploratory:
+        return values
+    if query.query_type in {"INFO", "WARN"}:
         return values
     if query.query_type == "S1_INFO":
         return {
@@ -365,6 +375,7 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         *,
         local_bleak: bool = False,
         proxy_entry_id: str | None = None,
+        exploratory: bool = False,
     ) -> dict[str, Any]:
         """One production-transport query, without publishing partial telemetry.
 
@@ -372,7 +383,12 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         a bisection. All four actions share the same completion-based cooldown,
         task mutex, protocol verification and cleanup suspension.
         """
-        if query_type not in ISOLATED_QUERIES.values():
+        if exploratory:
+            if local_bleak or proxy_entry_id is not None:
+                raise validation("select_fixed_query")
+            if not EXPLORATORY_QUERY.fullmatch(query_type):
+                raise validation("invalid_exploratory_query")
+        elif query_type not in ISOLATED_QUERIES.values():
             raise validation("select_fixed_query")
         if local_bleak and query_type != "OpInfo":
             raise validation("same_radio_opinfo_only")
@@ -394,7 +410,9 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         report: dict[str, Any] = {"query_type": query_type}
         started = dt_util.utcnow().isoformat()
         values: dict[str, Any] = {}
-        query = Query("omit_empty_crc", "request", self.allow_missing, query_type)
+        query = Query(
+            "omit_empty_crc", "request", self.allow_missing, query_type, exploratory
+        )
         try:
             async with asyncio.timeout(
                 80 if proxy_entry_id is not None else SINGLE_QUERY_SECONDS
@@ -488,7 +506,9 @@ class AiperCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             # Only verified allowlisted scalars, never raw frames or identifiers.
             self.runtime.last_result = {
                 "mode": (
-                    "isolated_ha_proxy_trace"
+                    "isolated_exploratory_query"
+                    if exploratory
+                    else "isolated_ha_proxy_trace"
                     if proxy_entry_id is not None
                     else "isolated_ha_bluetooth_local_query"
                     if local_bleak

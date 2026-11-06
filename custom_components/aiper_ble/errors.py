@@ -11,6 +11,10 @@ MESSAGES = {
     "enable_polling_first": "Enable authorised polling first.",
     "polling_suspended": "Polling suspended; review diagnostics first.",
     "already_running": "A poll or probe is already running.",
+    "invalid_exploratory_query": (
+        "The exploratory keyword must be 2 to 16 upper-case letters, digits or "
+        "underscores, starting with a letter."
+    ),
     "select_fixed_query": "Select a fixed diagnostic query.",
     "same_radio_opinfo_only": "Same-radio diagnostics allow only OpInfo.",
     "proxy_trace_opinfo_only": "Proxy trace allows only one OpInfo query.",

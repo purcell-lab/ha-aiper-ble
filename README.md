@@ -410,6 +410,19 @@ automatic cycle is scheduled one normal interval after the manual one finishes.
 With a response requested, the action returns `status` and
 `last_successful_poll`. It updates the same sensors as automatic polling.
 
+## Exploratory query
+
+`aiper_ble.query_exploratory` is for finding out what a keyword the
+integration does not know draws from a robot, for example when a new model
+appears. It takes the same confirmations as the isolated queries, needs
+recurring polling disabled on that entry, runs over Home Assistant's
+Bluetooth routing only, and shares the cooldown. It sends `AT+<keyword>?`
+exactly as the fixed status queries are sent and accepts the single reply,
+whatever it is. The response carries `response_evidence` with the reply's
+validity, length, terminator, whether it starts with `+<keyword>:`, and up
+to 96 printable characters of its text. Nothing is interpreted, published or
+retried, and no control is ever sent.
+
 ## Troubleshooting
 
 - **Unavailable optional sensors:** The robot did not return those fields.
