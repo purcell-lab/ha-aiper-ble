@@ -326,3 +326,31 @@ discover:
       default: false
       selector:
         boolean:
+
+query_exploratory:
+  fields:
+    entry_id:
+      required: true
+      selector:
+        config_entry:
+          integration: aiper_ble
+    query_keyword:
+      required: true
+      example: M2_INFO
+      selector:
+        text:
+    confirm_app_closed:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_query_write:
+      required: true
+      default: false
+      selector:
+        boolean:
+    confirm_notifications:
+      required: true
+      default: false
+      selector:
+        boolean:

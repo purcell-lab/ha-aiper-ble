@@ -248,3 +248,61 @@ async def test_timeout_records_cleanup_and_cooldown(hass, transport):
     assert result["values"] == {}
     assert entry.runtime_data.task is None
     assert entry.runtime_data.coordinator.last_attempt_finished is not None
+
+
+async def test_exploratory_query_sends_the_keyword_and_reports_evidence_only(
+    hass, radio
+):
+    entry = await setup(hass, {})
+    entry.runtime_data.target = replace(
+        entry.runtime_data.target, adapter_path=None, adapter_address=None
+    )
+    radio.mutations.append(
+        lambda client: setattr(
+            client,
+            "reply",
+            frame(response("INFO", {"ack": "+M2_INFO:1,2,3\r\n", "sn": "PRIVATE"})),
+        )
+    )
+    result = await hass.services.async_call(
+        DOMAIN,
+        "query_exploratory",
+        {"entry_id": entry.entry_id, "query_keyword": "M2_INFO", **CONFIRMS},
+        blocking=True,
+        return_response=True,
+    )
+    assert result["query_type"] == "M2_INFO"
+    assert result["mode"] == "isolated_exploratory_query"
+    assert result["status"] == "query_complete"
+    assert result["values"] == {}
+    assert not result["updates_entities"]
+    evidence = result["response_evidence"]
+    assert evidence["reply_text"] == "+M2_INFO:1,2,3"
+    assert evidence["matches_keyword"] and evidence["crc_and_result_valid"]
+    assert "PRIVATE" not in json.dumps(result)
+    assert bytes(radio.clients[0].written) == query_frame(
+        Query("omit_empty_crc", "request", query_type="M2_INFO", exploratory=True)
+    )
+    assert radio.clients[0].calls.count("disconnect") == 1
+    assert entry.runtime_data.coordinator.data is None
+    # The keyword is validated before anything is reserved or sent.
+    expire_cooldown(entry.runtime_data.coordinator)
+    with pytest.raises(HomeAssistantError, match="upper-case"):
+        await hass.services.async_call(
+            DOMAIN,
+            "query_exploratory",
+            {"entry_id": entry.entry_id, "query_keyword": "m2 info", **CONFIRMS},
+            blocking=True,
+            return_response=True,
+        )
+    assert len(radio.clients) == 1
+    # The exploratory action shares the isolated cooldown.
+    await hass.services.async_call(
+        DOMAIN,
+        "query_exploratory",
+        {"entry_id": entry.entry_id, "query_keyword": "S2_INFO", **CONFIRMS},
+        blocking=True,
+        return_response=True,
+    )
+    with pytest.raises(HomeAssistantError, match="cooldown"):
+        await call_query(hass, entry, "query_info")

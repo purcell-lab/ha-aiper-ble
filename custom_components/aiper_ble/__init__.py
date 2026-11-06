@@ -35,6 +35,7 @@ from homeassistant.util import dt as dt_util
 from .const import DOMAIN, SIGNAL_RESULT
 from .controls import CONTROL_SERVICES, async_control
 from .coordinator import (
+    EXPLORATORY_SERVICE,
     ISOLATED_QUERIES,
     LOCAL_BLEAK_SERVICE,
     PROXY_TRACE_SERVICE,
@@ -107,6 +108,7 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             *ISOLATED_QUERIES,
             LOCAL_BLEAK_SERVICE,
             PROXY_TRACE_SERVICE,
+            EXPLORATORY_SERVICE,
         ):
             if any(
                 call.data.get(key) is not True
@@ -125,10 +127,14 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             ):
                 raise validation("proxy_logging_confirmation")
             try:
+                exploratory = call.service == EXPLORATORY_SERVICE
                 result = await runtime.coordinator.async_query_isolated(
-                    ISOLATED_QUERIES.get(call.service, "OpInfo"),
+                    str(call.data["query_keyword"])
+                    if exploratory
+                    else ISOLATED_QUERIES.get(call.service, "OpInfo"),
                     local_bleak=call.service == LOCAL_BLEAK_SERVICE,
                     proxy_entry_id=call.data.get("proxy_entry_id"),
+                    exploratory=exploratory,
                 )
             finally:
                 async_dispatcher_send(hass, SIGNAL_RESULT, entry.entry_id)
@@ -279,6 +285,21 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
             ),
             supports_response=SupportsResponse.OPTIONAL,
         )
+    hass.services.async_register(
+        DOMAIN,
+        EXPLORATORY_SERVICE,
+        handle,
+        schema=vol.Schema(
+            {
+                **schema,
+                vol.Required("query_keyword"): cv.string,
+                vol.Required("confirm_app_closed"): cv.boolean,
+                vol.Required("confirm_query_write"): cv.boolean,
+                vol.Required("confirm_notifications"): cv.boolean,
+            }
+        ),
+        supports_response=SupportsResponse.OPTIONAL,
+    )
     hass.services.async_register(
         DOMAIN,
         "poll_now",

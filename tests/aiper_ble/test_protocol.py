@@ -78,6 +78,49 @@ def test_s1_info_exact_fixed_request_mandatory_crc(mode):
     assert result["recommended_checksum_mode"] == "not_applicable_nonempty_data"
 
 
+@pytest.mark.parametrize("keyword", ["M2_INFO", "S2_INFO", "AB", "X1_2_3_4_5_6_7_8"])
+def test_exploratory_query_sends_the_keyword_like_a_fixed_status_request(keyword):
+    query = p.Query("omit_empty_crc", "request", query_type=keyword, exploratory=True)
+    info = p.Query("omit_empty_crc", "request", query_type="INFO")
+    assert p.preview(query)["request_json"] == {
+        **p.preview(info)["request_json"],
+        "data": {"cmd": f"AT+{keyword}?"},
+        "chksum": p.crc16(f'{{"cmd":"AT+{keyword}?"}}'.encode()),
+    }
+
+
+@pytest.mark.parametrize(
+    "keyword", ["m2_info", "A", "TOO_LONG_KEYWORD_X", "AT+MODE=1", "IN FO", ""]
+)
+def test_exploratory_keyword_is_one_bounded_upper_case_token(keyword):
+    with pytest.raises(p.ProtocolError, match="invalid_query_type"):
+        p.Query("omit_empty_crc", "request", query_type=keyword, exploratory=True)
+
+
+def machine_reply(frame_type, data):
+    encoded = json.dumps(data, separators=(",", ":")).encode()
+    return {"type": frame_type, "data": data, "res": 0, "chksum": p.crc16(encoded)}
+
+
+def test_exploratory_reply_completes_with_bounded_evidence():
+    query = p.Query("omit_empty_crc", "request", query_type="M2_INFO", exploratory=True)
+    reply = machine_reply("Machine", {"ack": "+M2_INFO:23.5,1,\x01tail\r\n"})
+    assert p.query_telemetry(reply, query) == {}
+    evidence = p.response_evidence(reply, query)
+    assert evidence["query"] == "M2_INFO" and evidence["source"] == "ack"
+    assert evidence["crc_and_result_valid"] and evidence["res"] == 0
+    assert evidence["terminator"] == "CRLF" and evidence["matches_keyword"]
+    assert evidence["reply_text"] == "+M2_INFO:23.5,1,?tail"
+    assert not evidence["reply_truncated"]
+    error = machine_reply("Machine", {"ack": "+ERROR\r\n"})
+    assert p.query_telemetry(error, query) == {}  # an error reply still completes
+    assert not p.response_evidence(error, query)["matches_keyword"]
+    long = machine_reply("Machine", {"ack": "+M2_INFO:" + "9," * 80 + "\r\n"})
+    assert p.response_evidence(long, query)["reply_truncated"]
+    assert len(p.response_evidence(long, query)["reply_text"]) == 96
+    assert p.query_telemetry(machine_reply("OpInfo", {}), query) is None
+
+
 @pytest.mark.parametrize(
     "value", ["Machine", "AT+S1_INFO?", "S1_INFO=1", "FastTask", "s1_info", "", None]
 )

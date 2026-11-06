@@ -443,6 +443,32 @@
           "description": "Confirm the Aiper app is closed, other BLE clients are idle, and this single connection is authorised."
         }
       }
+    },
+    "query_exploratory": {
+      "name": "Exploratory status query once via HA routing",
+      "description": "Research only: disable recurring polling first. Sends one AT+<keyword>? status request, exactly as the fixed queries are sent, and returns bounded evidence about the single reply (validity, length, whether it matches the keyword, and up to 96 printable characters of its text). Nothing is interpreted or published, no controls are sent, no retries.",
+      "fields": {
+        "entry_id": {
+          "name": "Integration entry",
+          "description": "The loaded Aiper BLE entry."
+        },
+        "query_keyword": {
+          "name": "Keyword",
+          "description": "Upper-case AT keyword to query, such as M2_INFO; 2 to 16 letters, digits or underscores."
+        },
+        "confirm_app_closed": {
+          "name": "Other BLE clients idle",
+          "description": "Confirm the app is closed, other BLE clients idle and the robot stationary."
+        },
+        "confirm_query_write": {
+          "name": "Exploratory query authorised",
+          "description": "Authorise this single status request with a keyword the integration does not know."
+        },
+        "confirm_notifications": {
+          "name": "Notifications authorised",
+          "description": "Authorise notification subscription and disconnect cleanup."
+        }
+      }
     }
   },
   "issues": {
@@ -545,6 +571,9 @@
     },
     "probe_stopped": {
       "message": "Probe stopped ({status}). Download integration diagnostics."
+    },
+    "invalid_exploratory_query": {
+      "message": "The exploratory keyword must be 2 to 16 upper-case letters, digits or underscores, starting with a letter."
     }
   }
 }
