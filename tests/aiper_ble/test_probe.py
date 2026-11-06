@@ -162,6 +162,20 @@ async def test_allowlist_blocks_out_of_scope_operations(operation):
         await api.call(TARGET.device_path, p.CHAR_IF, operation)
 
 
+def test_models_by_name():
+    assert p.model_of("Aiper-Surfer S1-TEST") == "Surfer S1"
+    assert p.model_of("Aiper_Surfer S1_TEST") == "Surfer S1"
+    assert p.model_of("Aiper-EcoSurfer M2-MS6TEST") == "EcoSurfer M2"
+    assert p.model_of("Aiper_EcoSurfer M2_MS6TEST") == "EcoSurfer M2"
+    assert p.model_of("Aiper-Scuba X9-TEST") is None
+    assert p.model_of(None) is None
+    assert (
+        p.Target("AA:BB:CC:DD:EE:01", "Aiper-EcoSurfer M2-MS6TEST").model
+        == "EcoSurfer M2"
+    )
+    assert p.Target("AA:BB:CC:DD:EE:01", "Aiper-Scuba X9-TEST").model is None
+
+
 def test_target_accepts_both_advertised_spellings():
     target = p.Target("AA:BB:CC:DD:EE:01", "Aiper-Surfer S1-TEST")
     assert target.matches_name("Aiper-Surfer S1-TEST")

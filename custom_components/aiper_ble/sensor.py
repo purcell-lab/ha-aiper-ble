@@ -57,7 +57,7 @@ class TelemetrySensor(AiperEntity, SensorEntity):
         super().__init__(entry, key)
         self._attr_entity_registry_enabled_default = key in DEFAULT_ENABLED
         # Fixed IDs from the historical names; HA still honours user-renamed IDs.
-        self.entity_id = f"sensor.{slugify(SENSOR_NAMES[key])}"
+        self.fix_entity_id(f"sensor.{slugify(SENSOR_NAMES[key])}")
         if key == "temperature":
             self._attr_device_class = SensorDeviceClass.TEMPERATURE
             self._attr_native_unit_of_measurement = UnitOfTemperature.CELSIUS
@@ -99,7 +99,7 @@ class OperatingStateSensor(AiperEntity, SensorEntity):
 
     def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "operating_state")
-        self.entity_id = "sensor.aiper_ble_operating_state"
+        self.fix_entity_id("sensor.aiper_ble_operating_state")
 
     @property
     def available(self) -> bool:
@@ -129,7 +129,7 @@ class PollingStatusSensor(AiperEntity, SensorEntity):
 
     def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "polling_status")
-        self.entity_id = "sensor.aiper_ble_polling_status"
+        self.fix_entity_id("sensor.aiper_ble_polling_status")
 
     @property
     def available(self) -> bool:
@@ -170,7 +170,8 @@ class ResultSensor(SensorEntity):
         self.entry = entry
         self._attr_device_info = device_info(entry)
         self._attr_unique_id = f"{entry.entry_id}_discovery_result"
-        self.entity_id = "sensor.aiper_ble_discovery_result"
+        if entry.runtime_data.target.model == "Surfer S1":
+            self.entity_id = "sensor.aiper_ble_discovery_result"
 
     @property
     def native_value(self) -> str:
@@ -227,7 +228,7 @@ class WaterTemperatureSensor(AiperEntity, SensorEntity):
 
     def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "water_temperature")
-        self.entity_id = "sensor.aiper_ble_water_temperature"
+        self.fix_entity_id("sensor.aiper_ble_water_temperature")
 
     @property
     def available(self) -> bool:
@@ -277,7 +278,7 @@ class SignalStrengthSensor(AiperEntity, SensorEntity):
 
     def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "signal_strength")
-        self.entity_id = "sensor.aiper_ble_signal_strength"
+        self.fix_entity_id("sensor.aiper_ble_signal_strength")
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()

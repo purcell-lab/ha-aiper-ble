@@ -154,6 +154,21 @@ async def test_other_name_spelling_is_the_same_robot(hass, radio):
     assert report["status"] == "query_complete"
 
 
+async def test_ecosurfer_m2_is_accepted_by_route_validation(hass, radio):
+    """The M2 pairs with the same app; the same fixed query may be tried on it."""
+    from custom_components.aiper_ble.probe import Target
+
+    m2 = Target(TARGET.address, "Aiper-EcoSurfer M2-MS6TEST")
+    radio.device.name = m2.name
+    radio.routes[0].advertisement.local_name = m2.name
+    assert transport.validate_routes(hass, m2, S1) is radio.device
+    other = Target(TARGET.address, "Aiper-Scuba X9-TEST")
+    radio.device.name = other.name
+    radio.routes[0].advertisement.local_name = other.name
+    with pytest.raises(ProtocolError, match="unsupported_model"):
+        transport.validate_routes(hass, other, S1)
+
+
 async def test_other_serial_is_an_identity_change(hass, radio):
     radio.routes[0].advertisement.local_name = "Aiper-Surfer S1-OTHER"
     report = await execute(hass, radio)

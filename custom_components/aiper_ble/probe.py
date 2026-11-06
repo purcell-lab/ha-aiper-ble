@@ -13,6 +13,28 @@ from dbus_fast.aio import MessageBus
 
 from .protocol import Control, Listen, ProtocolError, Query, protocol_hint
 
+# Robots accepted by name. Only the Surfer S1's legacy protocol is proven on
+# the wire; the EcoSurfer M2 pairs with the same app and is accepted so the
+# same fixed, guarded queries can be tried on it. Any other name is refused.
+MODELS: dict[str, tuple[str, ...]] = {
+    "Surfer S1": ("Aiper-Surfer S1-", "Aiper_Surfer S1_"),
+    "EcoSurfer M2": ("Aiper-EcoSurfer M2-", "Aiper_EcoSurfer M2_"),
+}
+SUPPORTED_PREFIXES = tuple(
+    prefix for prefixes in MODELS.values() for prefix in prefixes
+)
+
+
+def model_of(name: object) -> str | None:
+    """The accepted model a Bluetooth name belongs to, or None."""
+    if not isinstance(name, str):
+        return None
+    for model, prefixes in MODELS.items():
+        if name.startswith(prefixes):
+            return model
+    return None
+
+
 EXPECTED_SERVICE = "4a5ad444-2537-11ee-be56-0242ac120002"
 EXPECTED_CHARACTERISTIC = "4a5a54e6-2537-11ee-be56-0242ac120002"
 KEY_EXCHANGE_CHARACTERISTIC = "4a5a64e6-2537-11ee-be56-0242ac120002"
@@ -52,6 +74,10 @@ class Target:
                 raise ValueError("Invalid local adapter path.")
         if not self.name.startswith(("Aiper-", "Aiper_")):
             raise ValueError("Only explicitly named Aiper devices are eligible.")
+
+    @property
+    def model(self) -> str | None:
+        return model_of(self.name)
 
     def matches_name(self, observed: object) -> bool:
         """Accept both advertised spellings of the same robot name.
@@ -268,7 +294,7 @@ def validate_query_protocol(
     connected, ServicesResolved device and an unambiguous legacy endpoint.
     Cached GATT can veto a connection, never prove a safe positive match.
     """
-    if not target.name.startswith(("Aiper-Surfer S1-", "Aiper_Surfer S1_")):
+    if target.model is None:
         raise ProtocolError("unsupported_model")
     for path, interfaces in objects.items():
         char = interfaces.get(CHAR_IF, {})

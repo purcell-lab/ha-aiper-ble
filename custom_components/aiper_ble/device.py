@@ -15,10 +15,11 @@ def device_info(entry: ConfigEntry) -> DeviceInfo:
     diagnostics keep redacting it.
     """
     target = entry.runtime_data.target
+    model = target.model or "Surfer S1"
     return DeviceInfo(
         identifiers={(DOMAIN, target.address.upper())},
         connections={(CONNECTION_BLUETOOTH, target.address.upper())},
-        name="Aiper Surfer S1 (BLE)",
+        name=f"Aiper {model} (BLE)",
         manufacturer="Aiper",
-        model="Surfer S1",
+        model=model,
     )

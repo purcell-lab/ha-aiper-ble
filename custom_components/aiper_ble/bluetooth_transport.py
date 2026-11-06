@@ -112,7 +112,7 @@ def validate_routes(
     connected: bool = False,
 ) -> BLEDevice:
     """Validate all currently selectable routes; HA chooses the actual backend."""
-    if not target.name.startswith(("Aiper-Surfer S1-", "Aiper_Surfer S1_")):
+    if target.model is None:
         raise ProtocolError("unsupported_model")
     device = bluetooth.async_ble_device_from_address(
         hass, target.address, connectable=True
