@@ -28,6 +28,11 @@ class AiperEntity(CoordinatorEntity["AiperCoordinator"]):
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_translation_key = key
 
+    def fix_entity_id(self, entity_id: str) -> None:
+        """Keep the historical IDs for the S1; other models take HA's defaults."""
+        if self.entry.runtime_data.target.model == "Surfer S1":
+            self.entity_id = entity_id
+
     @property
     def polling_active(self) -> bool:
         """Polling is enabled and the entry is not unloading."""

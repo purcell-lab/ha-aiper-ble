@@ -13,7 +13,7 @@ from homeassistant.setup import async_setup_component
 from custom_components.aiper_ble.const import DOMAIN
 
 from .helpers import TARGET
-from .test_polling import PATH, response, setup
+from .test_polling import OPTIONS, PATH, response, setup
 from .test_polling import transport as transport
 
 
@@ -243,6 +243,7 @@ async def test_one_device_all_entities_stable_after_reload(hass, transport):
     assert device.manufacturer == "Aiper"
     assert device.model == "Surfer S1"
     assert device.name == "Aiper Surfer S1 (BLE)"
+    assert device.model == "Surfer S1"
     # The Bluetooth connection drives HA's device-page Bluetooth section. Device
     # lookups are scoped per config entry, so it cannot merge this device with
     # the separate cloud integration's device.
@@ -272,3 +273,33 @@ async def test_one_device_all_entities_stable_after_reload(hass, transport):
     assert hass.states.get("sensor.pool_robot_temperature").state == "21.5"
     assert entities.async_get("sensor.aiper_ble_temperature") is None
     assert len(er.async_entries_for_config_entry(entities, entry.entry_id)) == 20
+
+
+async def test_ecosurfer_m2_entry_gets_its_own_device_name_and_default_ids(
+    hass, transport
+):
+    """Only the S1 keeps the historical fixed entity IDs."""
+    from dataclasses import asdict
+
+    from homeassistant.helpers import device_registry as dr
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.aiper_ble.probe import Target
+
+    m2 = Target(TARGET.address, "Aiper-EcoSurfer M2-MS6TEST")
+    entry = MockConfigEntry(
+        domain=DOMAIN, data=asdict(m2), unique_id=m2.address, options=OPTIONS
+    )
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    device = dr.async_get(hass).async_get_device({(DOMAIN, TARGET.address)})
+    assert device is not None
+    assert device.name == "Aiper EcoSurfer M2 (BLE)"
+    assert device.model == "EcoSurfer M2"
+    ids = {r.entity_id for r in er.async_entries_for_config_entry(er.async_get(hass), entry.entry_id)}
+    assert "vacuum.aiper_surfer_s1" not in ids
+    assert any(i.startswith("vacuum.aiper_ecosurfer_m2") for i in ids)
+    assert not any(i.startswith("sensor.aiper_ble_") for i in ids)
+    assert any(i.startswith("sensor.aiper_ecosurfer_m2") for i in ids)

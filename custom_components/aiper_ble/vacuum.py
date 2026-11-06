@@ -58,7 +58,7 @@ class AiperVacuum(AiperEntity, StateVacuumEntity):
     def __init__(self, entry: ConfigEntry) -> None:
         super().__init__(entry, "vacuum")
         self._attr_translation_key = None
-        self.entity_id = "vacuum.aiper_surfer_s1"
+        self.fix_entity_id("vacuum.aiper_surfer_s1")
 
     def _control_readback(self) -> dict[str, Any] | None:
         """A verified readback stands in until the next poll replaces it."""

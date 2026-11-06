@@ -19,6 +19,8 @@ def test_manifest_discovery_matchers_icons_and_no_external_requirements():
     assert [m["local_name"] for m in manifest["bluetooth"]] == [
         "Aiper-Surfer S1-*",
         "Aiper_Surfer S1_*",
+        "Aiper-EcoSurfer M2-*",
+        "Aiper_EcoSurfer M2_*",
     ]
     assert all(m["connectable"] for m in manifest["bluetooth"])
     icons = json.loads((COMPONENT / "icons.json").read_text())

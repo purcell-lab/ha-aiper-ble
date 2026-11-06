@@ -14,7 +14,7 @@ from homeassistant.helpers import selector
 
 from .const import DOMAIN
 from .coordinator import DEFAULT_INTERVAL, MAX_INTERVAL, MIN_INTERVAL
-from .probe import Target, candidates, open_bluez
+from .probe import SUPPORTED_PREFIXES, Target, candidates, open_bluez
 
 
 class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -73,7 +73,7 @@ class ConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             for info in bluetooth.async_discovered_service_info(
                 self.hass, connectable=True
             ):
-                if info.name.startswith(("Aiper-Surfer S1-", "Aiper_Surfer S1_")):
+                if info.name.startswith(SUPPORTED_PREFIXES):
                     candidate = Target(info.address.upper(), info.name)
                     available[candidate.address] = candidate
         except Exception:  # noqa: BLE001 - unavailable shared manager

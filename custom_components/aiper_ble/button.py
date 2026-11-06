@@ -31,7 +31,7 @@ class AiperButton(AiperEntity, ButtonEntity):
 
     def __init__(self, entry: ConfigEntry, key: str) -> None:
         super().__init__(entry, key)
-        self.entity_id = f"button.aiper_ble_{key}"
+        self.fix_entity_id(f"button.aiper_ble_{key}")
 
     @property
     def available(self) -> bool:

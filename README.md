@@ -204,11 +204,16 @@ any live HA installation or remove the old repository's copy.
 
 ## Supported devices
 
-Only the Aiper Surfer S1 (solar pool skimmer) is supported, and only over the
-legacy Bluetooth LE protocol it exposes. Setup accepts robots whose Bluetooth
-name starts with `Aiper-Surfer S1-` or `Aiper_Surfer S1_`. Robots that
-advertise the newer key-exchange protocol are vetoed before any write. Other
-Aiper models use different command sets and are not accepted.
+The Aiper Surfer S1 (solar pool skimmer) is supported over the legacy
+Bluetooth LE protocol it exposes. The Aiper EcoSurfer M2 pairs with the same
+app and is accepted for setup so the same fixed, guarded queries can be tried
+on it; whether it answers them is not yet established. Setup accepts robots
+whose Bluetooth name starts with `Aiper-Surfer S1-`, `Aiper_Surfer S1_`,
+`Aiper-EcoSurfer M2-` or `Aiper_EcoSurfer M2_`. Robots that advertise the
+newer key-exchange protocol are vetoed before any write. Other Aiper models
+use different command sets and are not accepted. The S1 keeps its historical
+entity IDs (`sensor.aiper_ble_*`, `vacuum.aiper_surfer_s1`); other models get
+Home Assistant's default IDs from their device name.
 
 ## Supported functions
 
